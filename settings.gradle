@@ -9,4 +9,4 @@ pluginManagement {
 	}
 }
 
-rootProject.name = "cartographer-minimap"
+rootProject.name = "neverket-minimap"

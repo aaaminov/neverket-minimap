@@ -20,7 +20,7 @@ import java.util.HexFormat;
 import java.util.List;
 
 public final class AtlasStorage {
-	private static final int FORMAT_VERSION = 1;
+	private static final int FORMAT_VERSION = 2;
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
 	private final Path directory;
@@ -38,6 +38,11 @@ public final class AtlasStorage {
 
 		try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
 			StoredAtlas stored = GSON.fromJson(reader, StoredAtlas.class);
+			if (stored != null && stored.format == 1) {
+				// Version 1 trusted the placeholder 0,0 center created by the vanilla
+				// multiplayer client. Those coordinates cannot be migrated safely.
+				return atlas;
+			}
 			if (stored == null || stored.format != FORMAT_VERSION || stored.maps == null) {
 				throw new IOException("Unsupported or invalid atlas file: " + file);
 			}

@@ -11,7 +11,7 @@ public final class SettingsScreen extends Screen {
 	private final ModConfig config;
 
 	public SettingsScreen(ModConfig config) {
-		super(Component.translatable("screen.cartographer-minimap.settings"));
+		super(Component.translatable("screen.neverket-minimap.settings"));
 		this.config = config;
 	}
 
@@ -35,6 +35,11 @@ public final class SettingsScreen extends Screen {
 		y += 24;
 		this.cyclingButton(left, y, "fullscreen", () -> onOff(this.config.fullscreenEnabled), () -> this.config.fullscreenEnabled = !this.config.fullscreenEnabled);
 		this.cyclingButton(right, y, "visible", () -> onOff(this.config.visible), () -> this.config.visible = !this.config.visible);
+		y += 24;
+		this.cyclingButton(left, y, "terrain_contours", () -> onOff(this.config.showTerrainContours), () -> this.config.showTerrainContours = !this.config.showTerrainContours);
+		this.cyclingButton(right, y, "terrain_contour_range", () -> this.config.terrainContourRangeChunks + " chunks", () -> {
+			this.config.terrainContourRangeChunks = this.config.terrainContourRangeChunks >= 16 ? 2 : this.config.terrainContourRangeChunks + 2;
+		});
 
 		this.addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> this.onClose()).bounds(this.width / 2 - 100, this.height - 32, 200, 20).build());
 	}
@@ -60,7 +65,7 @@ public final class SettingsScreen extends Screen {
 	}
 
 	private static Component label(String key, String value) {
-		return Component.translatable("option.cartographer-minimap." + key).append(": " + value);
+		return Component.translatable("option.neverket-minimap." + key).append(": " + value);
 	}
 
 	private static String onOff(boolean value) {

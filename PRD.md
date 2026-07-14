@@ -1,4 +1,4 @@
-# PRD: Cartographer Minimap
+# PRD: Neverket Minimap
 
 ## 1. Описание
 

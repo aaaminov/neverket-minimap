@@ -6,6 +6,9 @@ import dev.cartographer.minimap.client.MinimapRenderer;
 import dev.cartographer.minimap.client.SettingsScreen;
 import dev.cartographer.minimap.client.WorldSession;
 import dev.cartographer.minimap.config.ModConfig;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -21,7 +24,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class CartographerMinimapClient implements ClientModInitializer {
-	public static final String MOD_ID = "cartographer-minimap";
+	public static final String MOD_ID = "neverket-minimap";
+	private static final String LEGACY_MOD_ID = "cartographer-minimap";
 	private static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
 	private ModConfig config;
@@ -35,7 +39,9 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		Minecraft minecraft = Minecraft.getInstance();
-		var configDirectory = FabricLoader.getInstance().getConfigDir().resolve(MOD_ID);
+		Path configRoot = FabricLoader.getInstance().getConfigDir();
+		Path configDirectory = configRoot.resolve(MOD_ID);
+		migrateLegacyConfig(configRoot.resolve(LEGACY_MOD_ID), configDirectory);
 		this.config = ModConfig.load(configDirectory.resolve("config.json"));
 		this.session = new WorldSession(configDirectory.resolve("worlds"), LOGGER);
 		this.renderer = new MinimapRenderer(minecraft, this.session, this.config);
@@ -47,9 +53,9 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 		this.settingsKey = register("settings", GLFW.GLFW_KEY_K, category);
 
 		ClientTickEvents.END_CLIENT_TICK.register(this::tick);
-		HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, id("minimap"), (graphics, deltaTracker) -> this.renderer.render(graphics));
+		HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, id("minimap"), this.renderer::render);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> this.close());
-		LOGGER.info("Cartographer Minimap initialized");
+		LOGGER.info("Neverket Minimap initialized");
 	}
 
 	private void tick(Minecraft minecraft) {
@@ -84,5 +90,17 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 
 	private static Identifier id(String path) {
 		return Identifier.fromNamespaceAndPath(MOD_ID, path);
+	}
+
+	private static void migrateLegacyConfig(Path legacyDirectory, Path configDirectory) {
+		if (Files.exists(configDirectory) || !Files.isDirectory(legacyDirectory)) {
+			return;
+		}
+		try {
+			Files.move(legacyDirectory, configDirectory);
+			LOGGER.info("Migrated minimap data from {} to {}", legacyDirectory, configDirectory);
+		} catch (IOException exception) {
+			LOGGER.warn("Could not migrate legacy minimap data; a new configuration will be used", exception);
+		}
 	}
 }

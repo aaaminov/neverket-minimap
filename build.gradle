@@ -2,7 +2,14 @@ plugins {
 	id "net.fabricmc.fabric-loom" version "${loom_version}"
 }
 
-version = project.mod_version
+def buildNumberFile = file("version.properties")
+def buildNumberProperties = new Properties()
+if (buildNumberFile.isFile()) {
+	buildNumberFile.withInputStream { buildNumberProperties.load(it) }
+}
+def nextBuildNumber = Integer.parseInt(buildNumberProperties.getProperty("build_number", "0")) + 1
+
+version = "${project.mod_version}.${nextBuildNumber}"
 group = project.maven_group
 
 base {
@@ -13,7 +20,7 @@ loom {
 	splitEnvironmentSourceSets()
 
 	mods {
-		"cartographer-minimap" {
+		"neverket-minimap" {
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
 		}
@@ -35,6 +42,20 @@ processResources {
 	filesMatching("fabric.mod.json") {
 		expand "version": project.version
 	}
+}
+
+tasks.register("incrementBuildNumber") {
+	description = "Increments the patch component used by the next produced JAR."
+	group = "build"
+	outputs.file(buildNumberFile)
+	outputs.upToDateWhen { false }
+	doLast {
+		buildNumberFile.text = "build_number=${nextBuildNumber}${System.lineSeparator()}"
+	}
+}
+
+tasks.named("jar") {
+	dependsOn tasks.named("incrementBuildNumber")
 }
 
 tasks.withType(JavaCompile).configureEach {

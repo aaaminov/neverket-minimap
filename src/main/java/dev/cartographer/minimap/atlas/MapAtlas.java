@@ -21,6 +21,9 @@ public final class MapAtlas {
 	public boolean put(MapSnapshot snapshot) {
 		Map<Integer, MapSnapshot> layer = this.snapshots.computeIfAbsent(snapshot.dimension(), ignored -> new LinkedHashMap<>());
 		MapSnapshot previous = layer.get(snapshot.id());
+		if (previous != null && previous.samePlacement(snapshot)) {
+			snapshot = previous.mergeKnownPixels(snapshot);
+		}
 		if (previous != null && previous.sameContent(snapshot)) {
 			return false;
 		}
@@ -67,6 +70,10 @@ public final class MapAtlas {
 
 	public long version() {
 		return this.version;
+	}
+
+	public Optional<MapSnapshot> findById(int id) {
+		return this.snapshots.values().stream().map(layer -> layer.get(id)).filter(java.util.Objects::nonNull).findFirst();
 	}
 
 	public Optional<Bounds> bounds(String dimension) {

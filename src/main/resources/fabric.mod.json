@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "id": "cartographer-minimap",
+  "id": "neverket-minimap",
   "version": "${version}",
-  "name": "Cartographer Minimap",
-  "description": "A minimap built exclusively from vanilla maps explored by the player.",
-  "authors": ["Cartographer Minimap contributors"],
+  "name": "Neverket Minimap",
+  "description": "A minimap whose explored terrain is assembled from vanilla maps collected by the player.",
+  "authors": ["Neverket Minimap contributors"],
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

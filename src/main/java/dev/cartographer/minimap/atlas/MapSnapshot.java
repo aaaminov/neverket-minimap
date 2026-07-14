@@ -94,4 +94,25 @@ public final class MapSnapshot {
 			&& this.scale == other.scale
 			&& Arrays.equals(this.colors, other.colors);
 	}
+
+	public boolean samePlacement(MapSnapshot other) {
+		return this.id == other.id
+			&& this.dimension.equals(other.dimension)
+			&& this.centerX == other.centerX
+			&& this.centerZ == other.centerZ
+			&& this.scale == other.scale;
+	}
+
+	public MapSnapshot mergeKnownPixels(MapSnapshot newer) {
+		if (!this.samePlacement(newer)) {
+			throw new IllegalArgumentException("Cannot merge maps with different placement");
+		}
+		byte[] merged = this.colors.clone();
+		for (int index = 0; index < merged.length; index++) {
+			if (newer.colors[index] != 0) {
+				merged[index] = newer.colors[index];
+			}
+		}
+		return new MapSnapshot(this.id, this.dimension, this.centerX, this.centerZ, this.scale, merged);
+	}
 }

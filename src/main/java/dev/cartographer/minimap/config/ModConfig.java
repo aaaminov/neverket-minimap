@@ -22,6 +22,8 @@ public final class ModConfig {
 	public UnknownTerrain unknownTerrain = UnknownTerrain.DARK;
 	public boolean fullscreenEnabled = true;
 	public boolean visible = true;
+	public boolean showTerrainContours = false;
+	public int terrainContourRangeChunks = 6;
 
 	private transient Path path;
 	private transient long revision;
@@ -55,7 +57,7 @@ public final class ModConfig {
 			}
 			this.revision++;
 		} catch (IOException exception) {
-			throw new IllegalStateException("Could not save Cartographer Minimap configuration", exception);
+			throw new IllegalStateException("Could not save Neverket Minimap configuration", exception);
 		}
 	}
 
@@ -74,6 +76,7 @@ public final class ModConfig {
 		this.size = Math.clamp(this.size, 96, 256);
 		this.opacity = Math.clamp(this.opacity, 0.25F, 1.0F);
 		this.zoom = Math.clamp(this.zoom, 1, 32);
+		this.terrainContourRangeChunks = Math.clamp(this.terrainContourRangeChunks, 2, 16);
 	}
 
 	public enum Corner {

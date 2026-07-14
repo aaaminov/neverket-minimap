@@ -66,6 +66,27 @@ class MapAtlasTest {
 		assertEquals(256, bounds.width());
 	}
 
+	@Test
+	void keepsPreviouslyKnownPixelsWhenUpdateIsPartial() {
+		MapAtlas atlas = new MapAtlas();
+		byte[] first = new byte[MapSnapshot.PIXEL_COUNT];
+		first[10] = 4;
+		atlas.put(new MapSnapshot(1, "minecraft:overworld", 0, 0, (byte)0, first));
+		byte[] update = new byte[MapSnapshot.PIXEL_COUNT];
+		update[20] = 8;
+		atlas.put(new MapSnapshot(1, "minecraft:overworld", 0, 0, (byte)0, update));
+
+		byte[] merged = atlas.snapshots().iterator().next().colors();
+		assertEquals(4, merged[10]);
+		assertEquals(8, merged[20]);
+	}
+
+	@Test
+	void recoversVanillaCenterFromPlayerMarker() {
+		assertEquals(64, MapCoordinates.centerFromPlayerMarker(100.0, (byte)36, (byte)1));
+		assertEquals(-128, MapCoordinates.centerFromPlayerMarker(-100.0, (byte)56, (byte)0));
+	}
+
 	private static MapSnapshot solidMap(int id, String dimension, int x, int z, byte scale, byte color) {
 		byte[] colors = new byte[MapSnapshot.PIXEL_COUNT];
 		java.util.Arrays.fill(colors, color);
