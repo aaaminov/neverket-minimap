@@ -12,8 +12,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 public final class FullscreenMapScreen extends Screen {
-	private static final int TEXTURE_WIDTH = 1024;
-	private static final int TEXTURE_HEIGHT = 512;
+	private static final int MIN_TEXTURE_WIDTH = 384;
+	private static final int MAX_TEXTURE_WIDTH = 1024;
+	private static final int MIN_TEXTURE_HEIGHT = 256;
+	private static final int MAX_TEXTURE_HEIGHT = 576;
+	private static final int PAN_SNAP_TEXTURE_PIXELS = 24;
 	private static final int MAP_GRID_BLOCKS = 128;
 	private static final int MAP_MARGIN = 6;
 	private static final int MAP_TOP = 34;
@@ -21,7 +24,9 @@ public final class FullscreenMapScreen extends Screen {
 
 	private final WorldSession session;
 	private final ModConfig config;
-	private final MapViewTexture viewTexture;
+	private MapViewTexture viewTexture;
+	private int textureWidth;
+	private int textureHeight;
 	private double centerX;
 	private double centerZ;
 	private int zoom;
@@ -37,16 +42,11 @@ public final class FullscreenMapScreen extends Screen {
 		this.centerZ = this.minecraft.player == null ? 0 : this.minecraft.player.getZ();
 		this.zoom = config.zoom;
 		this.dimension = this.minecraft.level == null ? "minecraft:overworld" : this.minecraft.level.dimension().identifier().toString();
-		this.viewTexture = new MapViewTexture(
-			this.minecraft,
-			Identifier.fromNamespaceAndPath("neverket-minimap", "fullscreen_view"),
-			TEXTURE_WIDTH,
-			TEXTURE_HEIGHT
-		);
 	}
 
 	@Override
 	protected void init() {
+		this.resizeViewTexture();
 		this.dimensions = new ArrayList<>(this.session.atlas().dimensions());
 		this.dimensions.sort(Comparator.naturalOrder());
 		if (!this.dimensions.contains(this.dimension) && !this.dimensions.isEmpty()) {
@@ -121,7 +121,9 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public void removed() {
-		this.viewTexture.close();
+		if (this.viewTexture != null) {
+			this.viewTexture.close();
+		}
 		super.removed();
 	}
 
@@ -136,21 +138,27 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	private void drawGrid(GuiGraphicsExtractor graphics, int mapX, int mapY, int mapWidth, int mapHeight) {
+		int gridStep = MAP_GRID_BLOCKS;
+		while ((double)gridStep / this.zoom < 8.0) {
+			gridStep *= 2;
+		}
+		int gridAlpha = this.zoom >= 32 ? 0x18 : this.zoom >= 16 ? 0x28 : 0x40;
+		int gridColor = gridAlpha << 24 | 0x6C7480;
 		double minWorldX = this.centerX - mapWidth * this.zoom / 2.0;
 		double maxWorldX = this.centerX + mapWidth * this.zoom / 2.0;
 		double minWorldZ = this.centerZ - mapHeight * this.zoom / 2.0;
 		double maxWorldZ = this.centerZ + mapHeight * this.zoom / 2.0;
-		long firstGridX = Math.floorDiv((long)Math.floor(minWorldX), MAP_GRID_BLOCKS) * MAP_GRID_BLOCKS;
-		long firstGridZ = Math.floorDiv((long)Math.floor(minWorldZ), MAP_GRID_BLOCKS) * MAP_GRID_BLOCKS;
+		long firstGridX = Math.floorDiv((long)Math.floor(minWorldX), gridStep) * gridStep;
+		long firstGridZ = Math.floorDiv((long)Math.floor(minWorldZ), gridStep) * gridStep;
 
 		graphics.enableScissor(mapX, mapY, mapX + mapWidth, mapY + mapHeight);
-		for (long worldX = firstGridX; worldX <= maxWorldX; worldX += MAP_GRID_BLOCKS) {
+		for (long worldX = firstGridX; worldX <= maxWorldX; worldX += gridStep) {
 			int screenX = (int)Math.round(mapX + mapWidth / 2.0 + (worldX - this.centerX) / this.zoom);
-			graphics.fill(screenX, mapY, screenX + 1, mapY + mapHeight, 0x406C7480);
+			graphics.fill(screenX, mapY, screenX + 1, mapY + mapHeight, gridColor);
 		}
-		for (long worldZ = firstGridZ; worldZ <= maxWorldZ; worldZ += MAP_GRID_BLOCKS) {
+		for (long worldZ = firstGridZ; worldZ <= maxWorldZ; worldZ += gridStep) {
 			int screenY = (int)Math.round(mapY + mapHeight / 2.0 + (worldZ - this.centerZ) / this.zoom);
-			graphics.fill(mapX, screenY, mapX + mapWidth, screenY + 1, 0x406C7480);
+			graphics.fill(mapX, screenY, mapX + mapWidth, screenY + 1, gridColor);
 		}
 		graphics.disableScissor();
 	}
@@ -216,6 +224,34 @@ public final class FullscreenMapScreen extends Screen {
 
 	private boolean isInsideMap(double x, double y) {
 		return x >= MAP_MARGIN && x < this.width - MAP_MARGIN && y >= MAP_TOP && y < this.height - MAP_BOTTOM;
+	}
+
+	private void resizeViewTexture() {
+		int mapWidth = Math.max(64, this.width - MAP_MARGIN * 2);
+		int mapHeight = Math.max(64, this.height - MAP_TOP - MAP_BOTTOM);
+		int requiredWidth = adaptiveTextureSize(mapWidth, MIN_TEXTURE_WIDTH, MAX_TEXTURE_WIDTH);
+		int requiredHeight = adaptiveTextureSize(mapHeight, MIN_TEXTURE_HEIGHT, MAX_TEXTURE_HEIGHT);
+		if (this.viewTexture != null && requiredWidth == this.textureWidth && requiredHeight == this.textureHeight) {
+			return;
+		}
+		if (this.viewTexture != null) {
+			this.viewTexture.close();
+		}
+		this.textureWidth = requiredWidth;
+		this.textureHeight = requiredHeight;
+		this.viewTexture = new MapViewTexture(
+			this.minecraft,
+			Identifier.fromNamespaceAndPath("neverket-minimap", "fullscreen_view"),
+			requiredWidth,
+			requiredHeight,
+			PAN_SNAP_TEXTURE_PIXELS
+		);
+	}
+
+	private static int adaptiveTextureSize(int displaySize, int minimum, int maximum) {
+		int scaled = (displaySize * 3 + 3) / 4;
+		int aligned = Math.ceilDiv(scaled, 64) * 64;
+		return Math.clamp(aligned, minimum, maximum);
 	}
 
 	private Component dimensionLabel() {

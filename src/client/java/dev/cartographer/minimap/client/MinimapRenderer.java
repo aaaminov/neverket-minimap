@@ -78,7 +78,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		graphics.pose().pushMatrix();
 		graphics.pose().translate(centerX, centerY);
 		graphics.pose().rotate((float)Math.toRadians(yawDegrees + 180.0F));
-		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, -6, -6, 12, 12);
+		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, -5, -5, 10, 10);
 		graphics.pose().popMatrix();
 	}
 

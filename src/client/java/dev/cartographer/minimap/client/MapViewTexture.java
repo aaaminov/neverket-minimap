@@ -16,7 +16,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.MapColor;
 
 public final class MapViewTexture implements AutoCloseable {
-	private static final int OVERSCAN = 4;
+	private static final int DEFAULT_OVERSCAN = 4;
 	private static final int NO_HEIGHT = Integer.MIN_VALUE;
 	private static final byte LAND = 1;
 	private static final byte WATER = 2;
@@ -25,6 +25,8 @@ public final class MapViewTexture implements AutoCloseable {
 	private final Identifier id;
 	private final int viewWidth;
 	private final int viewHeight;
+	private final int centerSnapPixels;
+	private final int overscan;
 	private final int textureWidth;
 	private final int textureHeight;
 	private DynamicTexture texture;
@@ -40,16 +42,24 @@ public final class MapViewTexture implements AutoCloseable {
 	private boolean lastTerrainContours;
 	private int lastTerrainContourRange;
 	private long lastTerrainRefresh = Long.MIN_VALUE;
-	private float sourceU = OVERSCAN;
-	private float sourceV = OVERSCAN;
+	private float sourceU;
+	private float sourceV;
 
 	public MapViewTexture(Minecraft minecraft, Identifier id, int viewWidth, int viewHeight) {
+		this(minecraft, id, viewWidth, viewHeight, 0);
+	}
+
+	public MapViewTexture(Minecraft minecraft, Identifier id, int viewWidth, int viewHeight, int centerSnapPixels) {
 		this.minecraft = minecraft;
 		this.id = id;
 		this.viewWidth = viewWidth;
 		this.viewHeight = viewHeight;
-		this.textureWidth = viewWidth + OVERSCAN * 2;
-		this.textureHeight = viewHeight + OVERSCAN * 2;
+		this.centerSnapPixels = Math.max(0, centerSnapPixels);
+		this.overscan = Math.max(DEFAULT_OVERSCAN, centerSnapPixels + 1);
+		this.textureWidth = viewWidth + this.overscan * 2;
+		this.textureHeight = viewHeight + this.overscan * 2;
+		this.sourceU = this.overscan;
+		this.sourceV = this.overscan;
 	}
 
 	public void update(
@@ -66,12 +76,12 @@ public final class MapViewTexture implements AutoCloseable {
 		int terrainContourRangeChunks
 	) {
 		this.ensureCreated();
-		double sampleCenterX = Math.floor(centerX);
-		double sampleCenterZ = Math.floor(centerZ);
 		double blocksPerTexturePixelX = blocksPerScreenPixel * displayWidth / this.viewWidth;
 		double blocksPerTexturePixelZ = blocksPerScreenPixel * displayHeight / this.viewHeight;
-		this.sourceU = (float)(OVERSCAN + (centerX - sampleCenterX) / blocksPerTexturePixelX);
-		this.sourceV = (float)(OVERSCAN + (centerZ - sampleCenterZ) / blocksPerTexturePixelZ);
+		double sampleCenterX = this.snapCenter(centerX, blocksPerTexturePixelX);
+		double sampleCenterZ = this.snapCenter(centerZ, blocksPerTexturePixelZ);
+		this.sourceU = (float)(this.overscan + (centerX - sampleCenterX) / blocksPerTexturePixelX);
+		this.sourceV = (float)(this.overscan + (centerZ - sampleCenterZ) / blocksPerTexturePixelZ);
 
 		boolean terrainContours = showTerrainContours
 			&& this.minecraft.level != null
@@ -138,7 +148,8 @@ public final class MapViewTexture implements AutoCloseable {
 			}
 		}
 		if (terrainHeights != null) {
-			this.drawTerrainContours(terrainHeights, terrainFade);
+			this.smoothTerrainBoundaries(terrainHeights, terrainKinds, terrainFade, unknown, unknownColor);
+			this.drawTerrainContours(terrainHeights, terrainKinds, terrainFade);
 		}
 		this.texture.upload();
 
@@ -202,12 +213,30 @@ public final class MapViewTexture implements AutoCloseable {
 
 	private int terrainColor(UnknownTerrain unknown, boolean water) {
 		if (unknown == UnknownTerrain.DARK) {
-			return water ? 0xFF202B35 : 0xFF292C25;
+			return water ? 0xFF292929 : 0xFF5A5A5A;
 		}
-		return water ? 0x66202B35 : 0x66292C25;
+		return water ? 0x88292929 : 0x885A5A5A;
 	}
 
-	private void drawTerrainContours(int[] heights, byte[] fades) {
+	private void smoothTerrainBoundaries(int[] heights, byte[] kinds, byte[] fades, UnknownTerrain unknown, int unknownColor) {
+		int transitionColor = unknown == UnknownTerrain.DARK ? 0xFF424242 : 0x88424242;
+		for (int y = 1; y < this.textureHeight - 1; y++) {
+			for (int x = 1; x < this.textureWidth - 1; x++) {
+				int index = x + y * this.textureWidth;
+				if (heights[index] == NO_HEIGHT) {
+					continue;
+				}
+				byte kind = kinds[index];
+				if (differentTerrain(kind, kinds[index - 1]) || differentTerrain(kind, kinds[index + 1])
+					|| differentTerrain(kind, kinds[index - this.textureWidth]) || differentTerrain(kind, kinds[index + this.textureWidth])) {
+					float fade = Byte.toUnsignedInt(fades[index]) / 255.0F;
+					this.texture.getPixels().setPixel(x, y, lerpColor(unknownColor, transitionColor, fade));
+				}
+			}
+		}
+	}
+
+	private void drawTerrainContours(int[] heights, byte[] kinds, byte[] fades) {
 		for (int y = 0; y < this.textureHeight - 1; y++) {
 			for (int x = 0; x < this.textureWidth - 1; x++) {
 				int index = x + y * this.textureWidth;
@@ -215,17 +244,29 @@ public final class MapViewTexture implements AutoCloseable {
 				if (height == NO_HEIGHT) {
 					continue;
 				}
-				int band = Math.floorDiv(height, 8);
+				int band = Math.floorDiv(height, 16);
 				int right = heights[index + 1];
 				int down = heights[index + this.textureWidth];
-				if ((right != NO_HEIGHT && Math.floorDiv(right, 8) != band)
-					|| (down != NO_HEIGHT && Math.floorDiv(down, 8) != band)) {
+				if ((right != NO_HEIGHT && kinds[index + 1] == kinds[index] && Math.floorDiv(right, 16) != band)
+					|| (down != NO_HEIGHT && kinds[index + this.textureWidth] == kinds[index] && Math.floorDiv(down, 16) != band)) {
 					float fade = Byte.toUnsignedInt(fades[index]) / 255.0F;
 					int base = this.texture.getPixels().getPixel(x, y);
-					this.texture.getPixels().setPixel(x, y, alphaOver(base, 0xB06D747C, fade));
+					this.texture.getPixels().setPixel(x, y, alphaOver(base, 0xFF090B0D, fade * 0.16F));
 				}
 			}
 		}
+	}
+
+	private double snapCenter(double center, double blocksPerTexturePixel) {
+		if (this.centerSnapPixels == 0) {
+			return Math.floor(center);
+		}
+		double step = blocksPerTexturePixel * this.centerSnapPixels;
+		return Math.floor(center / step) * step;
+	}
+
+	private static boolean differentTerrain(byte expected, byte actual) {
+		return actual != 0 && actual != expected;
 	}
 
 	private static int lerpColor(int from, int to, float amount) {
