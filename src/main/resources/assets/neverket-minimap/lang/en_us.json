@@ -10,7 +10,7 @@
   "screen.neverket-minimap.to_player": "To player",
   "screen.neverket-minimap.biome": "Biome: %s",
   "screen.neverket-minimap.biome_unknown": "not loaded",
-  "screen.neverket-minimap.hint": "Drag to pan · Wheel to zoom · %s blocks/pixel",
+  "screen.neverket-minimap.hint": "Drag to pan / Wheel to zoom / %s blocks/pixel",
   "option.neverket-minimap.corner": "Corner",
   "option.neverket-minimap.size": "Size",
   "option.neverket-minimap.shape": "Shape",

@@ -216,7 +216,7 @@ public final class FullscreenMapScreen extends Screen {
 		if (this.config.showCursorBiome) {
 			String biome = this.biomeAt(worldX, worldZ);
 			if (!biome.isEmpty()) {
-				text += "  ·  " + Component.translatable("screen.neverket-minimap.biome", biome).getString();
+				text += "  /  " + Component.translatable("screen.neverket-minimap.biome", biome).getString();
 			}
 		}
 		int textX = mapX + 5;

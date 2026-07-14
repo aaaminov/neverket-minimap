@@ -10,7 +10,7 @@
   "screen.neverket-minimap.to_player": "К игроку",
   "screen.neverket-minimap.biome": "Биом: %s",
   "screen.neverket-minimap.biome_unknown": "не загружен",
-  "screen.neverket-minimap.hint": "Перетаскивание — перемещение · Колесо — масштаб · %s блок/пикс.",
+  "screen.neverket-minimap.hint": "Перетаскивание — перемещение / Колесо — масштаб / %s блок/пикс.",
   "option.neverket-minimap.corner": "Угол",
   "option.neverket-minimap.size": "Размер",
   "option.neverket-minimap.shape": "Форма",
