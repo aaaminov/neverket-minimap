@@ -1,5 +1,7 @@
 package dev.cartographer.minimap.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.FilterMode;
 import dev.cartographer.minimap.atlas.MapAtlas;
 import dev.cartographer.minimap.config.ModConfig.UnknownTerrain;
 import java.util.Arrays;
@@ -31,7 +33,7 @@ public final class MapViewTexture implements AutoCloseable {
 	private final int overscan;
 	private final int textureWidth;
 	private final int textureHeight;
-	private DynamicTexture texture;
+	private SmoothDynamicTexture texture;
 	private String lastDimension;
 	private double lastSampleCenterX = Double.NaN;
 	private double lastSampleCenterZ = Double.NaN;
@@ -333,8 +335,15 @@ public final class MapViewTexture implements AutoCloseable {
 
 	private void ensureCreated() {
 		if (this.texture == null) {
-			this.texture = new DynamicTexture(() -> "Neverket Minimap " + this.id, this.textureWidth, this.textureHeight, true);
+			this.texture = new SmoothDynamicTexture(() -> "Neverket Minimap " + this.id, this.textureWidth, this.textureHeight);
 			this.minecraft.getTextureManager().register(this.id, this.texture);
+		}
+	}
+
+	private static final class SmoothDynamicTexture extends DynamicTexture {
+		private SmoothDynamicTexture(java.util.function.Supplier<String> label, int width, int height) {
+			super(label, width, height, true);
+			this.sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
 		}
 	}
 

@@ -27,6 +27,7 @@
   "option.neverket-minimap.map_detail_mode": "Запись с карт",
   "option.neverket-minimap.cursor_biome": "Биом под курсором",
   "option.neverket-minimap.map_lighting": "Освещение карты",
+  "option.neverket-minimap.night_darkness": "Затемнение ночью",
   "value.neverket-minimap.recording_mode.maps": "Сделанные карты",
   "value.neverket-minimap.recording_mode.explored_terrain": "Всю исследованную местность",
   "value.neverket-minimap.map_detail_mode.vanilla_pixels": "Пиксельно, как в оригинале",

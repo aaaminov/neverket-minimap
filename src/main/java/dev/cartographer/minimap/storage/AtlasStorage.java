@@ -21,7 +21,7 @@ import java.util.HexFormat;
 import java.util.List;
 
 public final class AtlasStorage {
-	private static final int FORMAT_VERSION = 3;
+	private static final int FORMAT_VERSION = 4;
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
 	private final Path directory;
@@ -44,7 +44,7 @@ public final class AtlasStorage {
 				// multiplayer client. Those coordinates cannot be migrated safely.
 				return atlas;
 			}
-			if (stored == null || (stored.format != 2 && stored.format != FORMAT_VERSION) || stored.maps == null) {
+			if (stored == null || (stored.format < 2 || stored.format > FORMAT_VERSION) || stored.maps == null) {
 				throw new IOException("Unsupported or invalid atlas file: " + file);
 			}
 			for (StoredMap map : stored.maps) {

@@ -27,6 +27,7 @@
   "option.neverket-minimap.map_detail_mode": "Map recording",
   "option.neverket-minimap.cursor_biome": "Biome under cursor",
   "option.neverket-minimap.map_lighting": "Map lighting",
+  "option.neverket-minimap.night_darkness": "Night darkening",
   "value.neverket-minimap.recording_mode.maps": "Collected maps",
   "value.neverket-minimap.recording_mode.explored_terrain": "All explored terrain",
   "value.neverket-minimap.map_detail_mode.vanilla_pixels": "Vanilla pixels",

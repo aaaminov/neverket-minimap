@@ -34,12 +34,12 @@ public final class MinimapRenderer implements AutoCloseable {
 		int size = this.config.size;
 		int x = switch (this.config.corner) {
 			case TOP_LEFT, BOTTOM_LEFT -> MARGIN;
-			case TOP_RIGHT -> graphics.guiWidth() - size - MARGIN - (this.hasVisibleEffects() ? 28 : 0);
-			case BOTTOM_RIGHT -> graphics.guiWidth() - size - MARGIN;
+			case TOP_RIGHT, BOTTOM_RIGHT -> graphics.guiWidth() - size - MARGIN;
 		};
 		int y = switch (this.config.corner) {
-			case TOP_LEFT, TOP_RIGHT -> MARGIN;
-			case BOTTOM_LEFT, BOTTOM_RIGHT -> Math.max(MARGIN, graphics.guiHeight() - size - MARGIN - 52);
+			case TOP_LEFT -> MARGIN;
+			case TOP_RIGHT -> MARGIN + (this.hasVisibleEffects() ? 28 : 0);
+			case BOTTOM_LEFT, BOTTOM_RIGHT -> Math.max(MARGIN, graphics.guiHeight() - size - MARGIN);
 		};
 
 		float partialTick = deltaTracker.getGameTimeDeltaPartialTick(true);
@@ -86,7 +86,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		float brightness = 1.0F;
 		if (config.mapLightingMode == ModConfig.MapLightingMode.DAY_NIGHT && minecraft.level != null
 			&& minecraft.level.dimensionType().hasSkyLight() && !minecraft.level.dimensionType().hasFixedTime()) {
-			brightness = 1.0F - Math.clamp(minecraft.level.getSkyDarken() / 15.0F, 0.0F, 1.0F) * 0.45F;
+			brightness = 1.0F - Math.clamp(minecraft.level.getSkyDarken() / 15.0F, 0.0F, 1.0F) * config.nightDarkness;
 		}
 		int alpha = Math.round(Math.clamp(opacity, 0.0F, 1.0F) * 255.0F);
 		int channel = Math.round(brightness * 255.0F);

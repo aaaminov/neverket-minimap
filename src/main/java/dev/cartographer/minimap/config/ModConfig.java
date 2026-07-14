@@ -12,7 +12,7 @@ import java.nio.file.Path;
 public final class ModConfig {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-	public Corner corner = Corner.TOP_RIGHT;
+	public Corner corner = Corner.TOP_LEFT;
 	public int size = 160;
 	public Shape shape = Shape.SQUARE;
 	public float opacity = 0.9F;
@@ -28,6 +28,7 @@ public final class ModConfig {
 	public MapDetailMode mapDetailMode = MapDetailMode.VANILLA_PIXELS;
 	public boolean showCursorBiome = true;
 	public MapLightingMode mapLightingMode = MapLightingMode.DAY_NIGHT;
+	public float nightDarkness = 0.45F;
 
 	private transient Path path;
 	private transient long revision;
@@ -74,7 +75,7 @@ public final class ModConfig {
 	}
 
 	private void sanitize() {
-		if (this.corner == null) this.corner = Corner.TOP_RIGHT;
+		if (this.corner == null) this.corner = Corner.TOP_LEFT;
 		if (this.shape == null) this.shape = Shape.SQUARE;
 		if (this.unknownTerrain == null) this.unknownTerrain = UnknownTerrain.DARK;
 		if (this.recordingMode == null) this.recordingMode = RecordingMode.MAPS;
@@ -82,6 +83,9 @@ public final class ModConfig {
 		if (this.mapLightingMode == null) this.mapLightingMode = MapLightingMode.DAY_NIGHT;
 		this.size = Math.clamp(this.size, 96, 256);
 		this.opacity = Math.clamp(this.opacity, 0.25F, 1.0F);
+		this.nightDarkness = !Float.isFinite(this.nightDarkness) || this.nightDarkness <= 0.0F
+			? 0.45F
+			: Math.clamp(this.nightDarkness, 0.15F, 0.75F);
 		this.zoom = Math.clamp(this.zoom, 1, 32);
 		this.terrainContourRangeChunks = Math.clamp(this.terrainContourRangeChunks, 2, 32);
 	}
