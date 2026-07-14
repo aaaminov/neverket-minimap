@@ -23,7 +23,10 @@ public final class ModConfig {
 	public boolean fullscreenEnabled = true;
 	public boolean visible = true;
 	public boolean showTerrainContours = false;
-	public int terrainContourRangeChunks = 6;
+	public int terrainContourRangeChunks = 8;
+	public RecordingMode recordingMode = RecordingMode.MAPS;
+	public MapDetailMode mapDetailMode = MapDetailMode.VANILLA_PIXELS;
+	public boolean showCursorBiome = true;
 
 	private transient Path path;
 	private transient long revision;
@@ -73,10 +76,12 @@ public final class ModConfig {
 		if (this.corner == null) this.corner = Corner.TOP_RIGHT;
 		if (this.shape == null) this.shape = Shape.SQUARE;
 		if (this.unknownTerrain == null) this.unknownTerrain = UnknownTerrain.DARK;
+		if (this.recordingMode == null) this.recordingMode = RecordingMode.MAPS;
+		if (this.mapDetailMode == null) this.mapDetailMode = MapDetailMode.VANILLA_PIXELS;
 		this.size = Math.clamp(this.size, 96, 256);
 		this.opacity = Math.clamp(this.opacity, 0.25F, 1.0F);
 		this.zoom = Math.clamp(this.zoom, 1, 32);
-		this.terrainContourRangeChunks = Math.clamp(this.terrainContourRangeChunks, 2, 16);
+		this.terrainContourRangeChunks = Math.clamp(this.terrainContourRangeChunks, 2, 32);
 	}
 
 	public enum Corner {
@@ -99,6 +104,22 @@ public final class ModConfig {
 		DARK, TRANSPARENT;
 
 		public UnknownTerrain next() {
+			return values()[(this.ordinal() + 1) % values().length];
+		}
+	}
+
+	public enum RecordingMode {
+		MAPS, EXPLORED_TERRAIN;
+
+		public RecordingMode next() {
+			return values()[(this.ordinal() + 1) % values().length];
+		}
+	}
+
+	public enum MapDetailMode {
+		VANILLA_PIXELS, LOADED_TERRAIN_DETAIL;
+
+		public MapDetailMode next() {
 			return values()[(this.ordinal() + 1) % values().length];
 		}
 	}

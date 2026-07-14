@@ -17,9 +17,11 @@ import net.minecraft.world.level.material.MapColor;
 
 public final class MapViewTexture implements AutoCloseable {
 	private static final int DEFAULT_OVERSCAN = 4;
+	private static final long CONTENT_REFRESH_INTERVAL_NANOS = 500_000_000L;
 	private static final int NO_HEIGHT = Integer.MIN_VALUE;
 	private static final byte LAND = 1;
 	private static final byte WATER = 2;
+	private static final int[] PACKED_MAP_COLORS = createPackedMapColors();
 
 	private final Minecraft minecraft;
 	private final Identifier id;
@@ -38,10 +40,12 @@ public final class MapViewTexture implements AutoCloseable {
 	private int lastDisplayHeight;
 	private boolean lastCircular;
 	private UnknownTerrain lastUnknown;
+	private boolean lastIncludeDetailedTerrain;
 	private long lastAtlasVersion = Long.MIN_VALUE;
 	private boolean lastTerrainContours;
 	private int lastTerrainContourRange;
 	private long lastTerrainRefresh = Long.MIN_VALUE;
+	private long lastUploadNanos = Long.MIN_VALUE;
 	private float sourceU;
 	private float sourceV;
 
@@ -72,6 +76,8 @@ public final class MapViewTexture implements AutoCloseable {
 		int displayHeight,
 		boolean circular,
 		UnknownTerrain unknown,
+		boolean includeDetailedTerrain,
+		boolean deferContentUpdates,
 		boolean showTerrainContours,
 		int terrainContourRangeChunks
 	) {
@@ -88,10 +94,10 @@ public final class MapViewTexture implements AutoCloseable {
 			&& this.minecraft.player != null
 			&& dimension.equals(this.minecraft.level.dimension().identifier().toString());
 		int effectiveContourRange = terrainContours
-			? Math.min(Math.min(terrainContourRangeChunks, this.minecraft.options.getEffectiveRenderDistance()), 16)
+			? Math.min(Math.min(terrainContourRangeChunks, this.minecraft.options.getEffectiveRenderDistance()), 32)
 			: 0;
 		long terrainRefresh = terrainContours ? this.minecraft.level.getGameTime() / 20L : 0L;
-		if (dimension.equals(this.lastDimension)
+		boolean geometryUnchanged = dimension.equals(this.lastDimension)
 			&& sampleCenterX == this.lastSampleCenterX
 			&& sampleCenterZ == this.lastSampleCenterZ
 			&& blocksPerScreenPixel == this.lastBlocksPerScreenPixel
@@ -99,11 +105,15 @@ public final class MapViewTexture implements AutoCloseable {
 			&& displayHeight == this.lastDisplayHeight
 			&& circular == this.lastCircular
 			&& unknown == this.lastUnknown
+			&& includeDetailedTerrain == this.lastIncludeDetailedTerrain
 			&& terrainContours == this.lastTerrainContours
-			&& effectiveContourRange == this.lastTerrainContourRange
-			&& terrainRefresh == this.lastTerrainRefresh
-			&& atlas.version() == this.lastAtlasVersion) {
-			return;
+			&& effectiveContourRange == this.lastTerrainContourRange;
+		if (geometryUnchanged) {
+			boolean contentUnchanged = terrainRefresh == this.lastTerrainRefresh && atlas.version() == this.lastAtlasVersion;
+			long elapsed = System.nanoTime() - this.lastUploadNanos;
+			if (deferContentUpdates || contentUnchanged || elapsed < CONTENT_REFRESH_INTERVAL_NANOS) {
+				return;
+			}
 		}
 
 		double radius = Math.min(this.viewWidth, this.viewHeight) / 2.0 - 0.5;
@@ -113,6 +123,8 @@ public final class MapViewTexture implements AutoCloseable {
 		int[] terrainHeights = terrainContours ? new int[pixelCount] : null;
 		byte[] terrainKinds = terrainContours ? new byte[pixelCount] : null;
 		byte[] terrainFade = terrainContours ? new byte[pixelCount] : null;
+		MapAtlas.ColorSampler colorSampler = atlas.sampler(dimension, includeDetailedTerrain);
+		LoadedTerrainSampler terrainSampler = terrainContours ? new LoadedTerrainSampler() : null;
 		if (terrainHeights != null) {
 			Arrays.fill(terrainHeights, NO_HEIGHT);
 		}
@@ -128,16 +140,16 @@ public final class MapViewTexture implements AutoCloseable {
 
 				int worldX = (int)Math.floor(sampleCenterX + dx * blocksPerTexturePixelX);
 				int worldZ = (int)Math.floor(sampleCenterZ + dz * blocksPerTexturePixelZ);
-				int packedColor = atlas.colorAt(dimension, worldX, worldZ);
+				int packedColor = colorSampler.colorAt(worldX, worldZ);
 				if (packedColor != 0) {
-					this.texture.getPixels().setPixel(x, y, MapColor.getColorFromPackedId(packedColor));
+					this.texture.getPixels().setPixel(x, y, PACKED_MAP_COLORS[packedColor & 0xFF]);
 					continue;
 				}
 
 				int color = unknownColor;
 				if (terrainHeights != null) {
 					int index = x + y * this.textureWidth;
-					this.sampleTerrain(worldX, worldZ, effectiveContourRange, index, terrainHeights, terrainKinds, terrainFade);
+					this.sampleTerrain(worldX, worldZ, effectiveContourRange, index, terrainHeights, terrainKinds, terrainFade, terrainSampler);
 					if (terrainHeights[index] != NO_HEIGHT) {
 						float fade = Byte.toUnsignedInt(terrainFade[index]) / 255.0F;
 						int terrainColor = this.terrainColor(unknown, terrainKinds[index] == WATER);
@@ -161,10 +173,12 @@ public final class MapViewTexture implements AutoCloseable {
 		this.lastDisplayHeight = displayHeight;
 		this.lastCircular = circular;
 		this.lastUnknown = unknown;
+		this.lastIncludeDetailedTerrain = includeDetailedTerrain;
 		this.lastTerrainContours = terrainContours;
 		this.lastTerrainContourRange = effectiveContourRange;
 		this.lastTerrainRefresh = terrainRefresh;
 		this.lastAtlasVersion = atlas.version();
+		this.lastUploadNanos = System.nanoTime();
 	}
 
 	public void blit(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int color) {
@@ -182,7 +196,8 @@ public final class MapViewTexture implements AutoCloseable {
 		int index,
 		int[] heights,
 		byte[] kinds,
-		byte[] fades
+		byte[] fades,
+		LoadedTerrainSampler sampler
 	) {
 		ClientLevel level = this.minecraft.level;
 		if (level == null || this.minecraft.player == null || rangeChunks <= 0) {
@@ -190,12 +205,12 @@ public final class MapViewTexture implements AutoCloseable {
 		}
 		double dx = worldX - this.minecraft.player.getX();
 		double dz = worldZ - this.minecraft.player.getZ();
-		double distance = Math.sqrt(dx * dx + dz * dz);
 		int rangeBlocks = rangeChunks * 16;
-		if (distance >= rangeBlocks) {
+		double distanceSquared = dx * dx + dz * dz;
+		if (distanceSquared >= (double)rangeBlocks * rangeBlocks) {
 			return;
 		}
-		LevelChunk chunk = level.getChunkSource().getChunk(Math.floorDiv(worldX, 16), Math.floorDiv(worldZ, 16), ChunkStatus.FULL, false);
+		LevelChunk chunk = sampler.chunkAt(level, worldX, worldZ);
 		if (chunk == null) {
 			return;
 		}
@@ -204,7 +219,11 @@ public final class MapViewTexture implements AutoCloseable {
 		int localZ = worldZ & 15;
 		int height = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, localX, localZ) + 1;
 		double fadeStart = rangeBlocks * 0.75;
-		double fade = Math.clamp((rangeBlocks - distance) / Math.max(1.0, rangeBlocks - fadeStart), 0.0, 1.0);
+		double fade = 1.0;
+		if (distanceSquared > fadeStart * fadeStart) {
+			double distance = Math.sqrt(distanceSquared);
+			fade = Math.clamp((rangeBlocks - distance) / Math.max(1.0, rangeBlocks - fadeStart), 0.0, 1.0);
+		}
 		fade = fade * fade * (3.0 - 2.0 * fade);
 		heights[index] = height;
 		kinds[index] = chunk.getFluidState(localX, height - 1, localZ).is(FluidTags.WATER) ? WATER : LAND;
@@ -285,6 +304,31 @@ public final class MapViewTexture implements AutoCloseable {
 
 	private static int channel(int color, int shift) {
 		return color >>> shift & 0xFF;
+	}
+
+	private static int[] createPackedMapColors() {
+		int[] colors = new int[256];
+		for (int packed = 0; packed < colors.length; packed++) {
+			colors[packed] = MapColor.getColorFromPackedId(packed);
+		}
+		return colors;
+	}
+
+	private static final class LoadedTerrainSampler {
+		private int chunkX = Integer.MIN_VALUE;
+		private int chunkZ = Integer.MIN_VALUE;
+		private LevelChunk chunk;
+
+		private LevelChunk chunkAt(ClientLevel level, int worldX, int worldZ) {
+			int requestedChunkX = Math.floorDiv(worldX, 16);
+			int requestedChunkZ = Math.floorDiv(worldZ, 16);
+			if (requestedChunkX != this.chunkX || requestedChunkZ != this.chunkZ) {
+				this.chunkX = requestedChunkX;
+				this.chunkZ = requestedChunkZ;
+				this.chunk = level.getChunkSource().getChunk(requestedChunkX, requestedChunkZ, ChunkStatus.FULL, false);
+			}
+			return this.chunk;
+		}
 	}
 
 	private void ensureCreated() {

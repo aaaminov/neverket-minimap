@@ -10,12 +10,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Optional;
 
-/** Combines map snapshots in world coordinates without obtaining any world data itself. */
+/** Combines vanilla map snapshots and optional block-resolution terrain tiles in world coordinates. */
 public final class MapAtlas {
 	private static final int INDEX_BUCKET_SIZE = 128;
 
 	private final Map<String, Map<Integer, MapSnapshot>> snapshots = new LinkedHashMap<>();
 	private final Map<String, Map<Long, List<MapSnapshot>>> spatialIndex = new HashMap<>();
+	private final Map<String, Map<Long, byte[]>> terrainTiles = new LinkedHashMap<>();
+	private final Map<String, Set<Long>> terrainChunks = new LinkedHashMap<>();
 	private long version;
 
 	public boolean put(MapSnapshot snapshot) {
@@ -34,7 +36,34 @@ public final class MapAtlas {
 		return true;
 	}
 
+	public int colorAt(String dimension, int worldX, int worldZ, boolean includeDetailedTerrain) {
+		if (includeDetailedTerrain) {
+			Map<Long, byte[]> terrainLayer = this.terrainTiles.get(dimension);
+			if (terrainLayer != null) {
+				int tileX = Math.floorDiv(worldX, TerrainTile.SIDE);
+				int tileZ = Math.floorDiv(worldZ, TerrainTile.SIDE);
+				byte[] colors = terrainLayer.get(bucketKey(tileX, tileZ));
+				if (colors != null) {
+					int index = Math.floorMod(worldX, TerrainTile.SIDE) + Math.floorMod(worldZ, TerrainTile.SIDE) * TerrainTile.SIDE;
+					int color = colors[index] & 0xFF;
+					if (color != 0) {
+						return color;
+					}
+				}
+			}
+		}
+		return this.mapColorAt(dimension, worldX, worldZ);
+	}
+
 	public int colorAt(String dimension, int worldX, int worldZ) {
+		return this.colorAt(dimension, worldX, worldZ, true);
+	}
+
+	public ColorSampler sampler(String dimension, boolean includeDetailedTerrain) {
+		return new ColorSampler(dimension, includeDetailedTerrain);
+	}
+
+	private int mapColorAt(String dimension, int worldX, int worldZ) {
 		Map<Long, List<MapSnapshot>> layerIndex = this.spatialIndex.get(dimension);
 		if (layerIndex == null) {
 			return 0;
@@ -54,8 +83,84 @@ public final class MapAtlas {
 		return 0;
 	}
 
+	public boolean putTerrainChunk(String dimension, int chunkX, int chunkZ, byte[] colors) {
+		if (colors.length != 16 * 16) {
+			throw new IllegalArgumentException("terrain chunk must contain exactly 256 pixels");
+		}
+		int tileX = Math.floorDiv(chunkX, 8);
+		int tileZ = Math.floorDiv(chunkZ, 8);
+		int startX = Math.floorMod(chunkX, 8) * 16;
+		int startZ = Math.floorMod(chunkZ, 8) * 16;
+		Map<Long, byte[]> layer = this.terrainTiles.computeIfAbsent(dimension, ignored -> new LinkedHashMap<>());
+		byte[] tile = layer.computeIfAbsent(bucketKey(tileX, tileZ), ignored -> new byte[TerrainTile.PIXEL_COUNT]);
+		boolean changed = false;
+		for (int z = 0; z < 16; z++) {
+			for (int x = 0; x < 16; x++) {
+				byte color = colors[x + z * 16];
+				int tileIndex = startX + x + (startZ + z) * TerrainTile.SIDE;
+				if (color != 0 && tile[tileIndex] != color) {
+					tile[tileIndex] = color;
+					changed = true;
+				}
+			}
+		}
+		boolean newlyRecorded = this.terrainChunks.computeIfAbsent(dimension, ignored -> new java.util.HashSet<>())
+			.add(bucketKey(chunkX, chunkZ));
+		if (changed || newlyRecorded) {
+			this.version++;
+		}
+		return changed;
+	}
+
+	public boolean hasTerrainChunk(String dimension, int chunkX, int chunkZ) {
+		Set<Long> layer = this.terrainChunks.get(dimension);
+		return layer != null && layer.contains(bucketKey(chunkX, chunkZ));
+	}
+
+	public boolean hasMapCoverage(String dimension, int chunkX, int chunkZ) {
+		int worldX = chunkX * 16 + 8;
+		int worldZ = chunkZ * 16 + 8;
+		return this.mapColorAt(dimension, worldX, worldZ) != 0;
+	}
+
+	public Collection<TerrainTile> terrainTiles() {
+		List<TerrainTile> result = new ArrayList<>();
+		this.terrainTiles.forEach((dimension, layer) -> layer.forEach((key, colors) -> result.add(new TerrainTile(
+			dimension,
+			(int)(key >> 32),
+			(int)(long)key,
+			colors
+		))));
+		return List.copyOf(result);
+	}
+
+	public void putTerrainTile(TerrainTile tile) {
+		this.terrainTiles.computeIfAbsent(tile.dimension(), ignored -> new LinkedHashMap<>())
+			.put(bucketKey(tile.tileX(), tile.tileZ()), tile.colors());
+		this.version++;
+	}
+
+	public Collection<TerrainChunk> terrainChunks() {
+		List<TerrainChunk> result = new ArrayList<>();
+		this.terrainChunks.forEach((dimension, chunks) -> chunks.forEach(key -> result.add(new TerrainChunk(
+			dimension,
+			(int)(key >> 32),
+			(int)(long)key
+		))));
+		return List.copyOf(result);
+	}
+
+	public void putTerrainChunkReference(TerrainChunk chunk) {
+		if (this.terrainChunks.computeIfAbsent(chunk.dimension(), ignored -> new java.util.HashSet<>())
+			.add(bucketKey(chunk.chunkX(), chunk.chunkZ()))) {
+			this.version++;
+		}
+	}
+
 	public Set<String> dimensions() {
-		return Set.copyOf(this.snapshots.keySet());
+		Set<String> result = new java.util.HashSet<>(this.snapshots.keySet());
+		result.addAll(this.terrainTiles.keySet());
+		return Set.copyOf(result);
 	}
 
 	public Collection<MapSnapshot> snapshots() {
@@ -78,18 +183,31 @@ public final class MapAtlas {
 
 	public Optional<Bounds> bounds(String dimension) {
 		Map<Integer, MapSnapshot> layer = this.snapshots.get(dimension);
-		if (layer == null || layer.isEmpty()) {
+		Map<Long, byte[]> terrainLayer = this.terrainTiles.get(dimension);
+		if ((layer == null || layer.isEmpty()) && (terrainLayer == null || terrainLayer.isEmpty())) {
 			return Optional.empty();
 		}
 		int minX = Integer.MAX_VALUE;
 		int minZ = Integer.MAX_VALUE;
 		int maxX = Integer.MIN_VALUE;
 		int maxZ = Integer.MIN_VALUE;
-		for (MapSnapshot snapshot : layer.values()) {
-			minX = Math.min(minX, snapshot.minX());
-			minZ = Math.min(minZ, snapshot.minZ());
-			maxX = Math.max(maxX, snapshot.maxXExclusive());
-			maxZ = Math.max(maxZ, snapshot.maxZExclusive());
+		if (layer != null) {
+			for (MapSnapshot snapshot : layer.values()) {
+				minX = Math.min(minX, snapshot.minX());
+				minZ = Math.min(minZ, snapshot.minZ());
+				maxX = Math.max(maxX, snapshot.maxXExclusive());
+				maxZ = Math.max(maxZ, snapshot.maxZExclusive());
+			}
+		}
+		if (terrainLayer != null) {
+			for (long key : terrainLayer.keySet()) {
+				int tileX = (int)(key >> 32);
+				int tileZ = (int)key;
+				minX = Math.min(minX, tileX * TerrainTile.SIDE);
+				minZ = Math.min(minZ, tileZ * TerrainTile.SIDE);
+				maxX = Math.max(maxX, (tileX + 1) * TerrainTile.SIDE);
+				maxZ = Math.max(maxZ, (tileZ + 1) * TerrainTile.SIDE);
+			}
 		}
 		return Optional.of(new Bounds(minX, minZ, maxX, maxZ));
 	}
@@ -116,6 +234,54 @@ public final class MapAtlas {
 
 	private static long bucketKey(int x, int z) {
 		return ((long)x << 32) ^ (z & 0xFFFFFFFFL);
+	}
+
+	public final class ColorSampler {
+		private final String dimension;
+		private final boolean includeDetailedTerrain;
+		private int bucketX = Integer.MIN_VALUE;
+		private int bucketZ = Integer.MIN_VALUE;
+		private byte[] terrainColors;
+		private List<MapSnapshot> mapCandidates;
+
+		private ColorSampler(String dimension, boolean includeDetailedTerrain) {
+			this.dimension = dimension;
+			this.includeDetailedTerrain = includeDetailedTerrain;
+		}
+
+		public int colorAt(int worldX, int worldZ) {
+			int currentBucketX = Math.floorDiv(worldX, INDEX_BUCKET_SIZE);
+			int currentBucketZ = Math.floorDiv(worldZ, INDEX_BUCKET_SIZE);
+			if (currentBucketX != this.bucketX || currentBucketZ != this.bucketZ) {
+				this.bucketX = currentBucketX;
+				this.bucketZ = currentBucketZ;
+				long key = bucketKey(currentBucketX, currentBucketZ);
+				Map<Long, byte[]> terrainLayer = MapAtlas.this.terrainTiles.get(this.dimension);
+				this.terrainColors = this.includeDetailedTerrain && terrainLayer != null ? terrainLayer.get(key) : null;
+				Map<Long, List<MapSnapshot>> mapLayer = MapAtlas.this.spatialIndex.get(this.dimension);
+				this.mapCandidates = mapLayer == null ? null : mapLayer.get(key);
+			}
+
+			if (this.terrainColors != null) {
+				int index = Math.floorMod(worldX, INDEX_BUCKET_SIZE) + Math.floorMod(worldZ, INDEX_BUCKET_SIZE) * INDEX_BUCKET_SIZE;
+				int color = this.terrainColors[index] & 0xFF;
+				if (color != 0) {
+					return color;
+				}
+			}
+			if (this.mapCandidates != null) {
+				for (MapSnapshot candidate : this.mapCandidates) {
+					int color = candidate.colorAt(worldX, worldZ) & 0xFF;
+					if (color != 0) {
+						return color;
+					}
+				}
+			}
+			return 0;
+		}
+	}
+
+	public record TerrainChunk(String dimension, int chunkX, int chunkZ) {
 	}
 
 	public record Bounds(int minX, int minZ, int maxXExclusive, int maxZExclusive) {

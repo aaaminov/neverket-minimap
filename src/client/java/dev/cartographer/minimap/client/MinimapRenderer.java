@@ -47,6 +47,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		this.viewTexture.update(
 			this.session.atlas(), dimension, playerPosition.x, playerPosition.z, this.config.zoom, size, size,
 			this.config.shape == ModConfig.Shape.CIRCLE, this.config.unknownTerrain,
+			this.useDetailedTerrain(), false,
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks
 		);
 
@@ -68,6 +69,11 @@ public final class MinimapRenderer implements AutoCloseable {
 			int coordinatesY = y + size - (this.config.showCardinalDirections ? 22 : 11);
 			graphics.centeredText(this.minecraft.font, coordinates, x + size / 2, coordinatesY, 0xFFFFFFFF);
 		}
+	}
+
+	private boolean useDetailedTerrain() {
+		return this.config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN
+			|| this.config.mapDetailMode == ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL;
 	}
 
 	static void drawPlayerArrow(GuiGraphicsExtractor graphics, int centerX, int centerY, float yawDegrees) {

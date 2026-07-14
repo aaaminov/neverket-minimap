@@ -43,7 +43,7 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 		Path configDirectory = configRoot.resolve(MOD_ID);
 		migrateLegacyConfig(configRoot.resolve(LEGACY_MOD_ID), configDirectory);
 		this.config = ModConfig.load(configDirectory.resolve("config.json"));
-		this.session = new WorldSession(configDirectory.resolve("worlds"), LOGGER);
+		this.session = new WorldSession(configDirectory.resolve("worlds"), LOGGER, this.config);
 		this.renderer = new MinimapRenderer(minecraft, this.session, this.config);
 
 		KeyMapping.Category category = KeyMapping.Category.register(id("controls"));

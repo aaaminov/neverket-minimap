@@ -8,15 +8,19 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.levelgen.Heightmap;
 
 public final class FullscreenMapScreen extends Screen {
-	private static final int MIN_TEXTURE_WIDTH = 384;
-	private static final int MAX_TEXTURE_WIDTH = 1024;
+	private static final int MIN_TEXTURE_WIDTH = 512;
+	private static final int MAX_TEXTURE_WIDTH = 1536;
 	private static final int MIN_TEXTURE_HEIGHT = 256;
-	private static final int MAX_TEXTURE_HEIGHT = 576;
-	private static final int PAN_SNAP_TEXTURE_PIXELS = 24;
+	private static final int MAX_TEXTURE_HEIGHT = 896;
+	private static final int PAN_SNAP_TEXTURE_PIXELS = 64;
 	private static final int MAP_GRID_BLOCKS = 128;
 	private static final int MAP_MARGIN = 6;
 	private static final int MAP_TOP = 34;
@@ -33,6 +37,11 @@ public final class FullscreenMapScreen extends Screen {
 	private String dimension;
 	private List<String> dimensions = List.of();
 	private Button dimensionButton;
+	private boolean dragging;
+	private String biomeCacheDimension;
+	private int biomeCacheX = Integer.MIN_VALUE;
+	private int biomeCacheZ = Integer.MIN_VALUE;
+	private String biomeCache = "";
 
 	public FullscreenMapScreen(WorldSession session, ModConfig config) {
 		super(Component.translatable("screen.neverket-minimap.fullscreen"));
@@ -75,12 +84,14 @@ public final class FullscreenMapScreen extends Screen {
 		int mapHeight = Math.max(64, this.height - MAP_TOP - MAP_BOTTOM);
 		this.viewTexture.update(
 			this.session.atlas(), this.dimension, this.centerX, this.centerZ, this.zoom, mapWidth, mapHeight,
-			false, this.config.unknownTerrain, this.config.showTerrainContours, this.config.terrainContourRangeChunks
+			false, this.config.unknownTerrain, this.useDetailedTerrain(), this.dragging,
+			this.config.showTerrainContours, this.config.terrainContourRangeChunks
 		);
 		this.viewTexture.blit(graphics, mapX, mapY, mapWidth, mapHeight, 0xFFFFFFFF);
 		this.drawGrid(graphics, mapX, mapY, mapWidth, mapHeight);
 		this.drawPlayer(graphics, mapX, mapY, mapWidth, mapHeight, partialTick);
 		this.drawBorder(graphics, mapX, mapY, mapWidth, mapHeight);
+		this.drawCursorInfo(graphics, mouseX, mouseY, mapX, mapY, mapWidth, mapHeight);
 
 		graphics.centeredText(
 			this.font,
@@ -95,11 +106,20 @@ public final class FullscreenMapScreen extends Screen {
 	@Override
 	public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
 		if (event.button() == 0 && this.isInsideMap(event.x(), event.y())) {
+			this.dragging = true;
 			this.centerX -= dx * this.zoom;
 			this.centerZ -= dy * this.zoom;
 			return true;
 		}
 		return super.mouseDragged(event, dx, dy);
+	}
+
+	@Override
+	public boolean mouseReleased(MouseButtonEvent event) {
+		if (event.button() == 0) {
+			this.dragging = false;
+		}
+		return super.mouseReleased(event);
 	}
 
 	@Override
@@ -183,6 +203,53 @@ public final class FullscreenMapScreen extends Screen {
 		graphics.fill(x + width, y, x + width + 1, y + height, 0xFF69717B);
 	}
 
+	private void drawCursorInfo(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int mapX, int mapY, int mapWidth, int mapHeight) {
+		if (!this.isInsideMap(mouseX, mouseY)) {
+			return;
+		}
+		int worldX = (int)Math.floor(this.centerX + (mouseX - (mapX + mapWidth / 2.0)) * this.zoom);
+		int worldZ = (int)Math.floor(this.centerZ + (mouseY - (mapY + mapHeight / 2.0)) * this.zoom);
+		String text = "X: " + worldX + "  Z: " + worldZ;
+		if (this.config.showCursorBiome) {
+			String biome = this.biomeAt(worldX, worldZ);
+			if (!biome.isEmpty()) {
+				text += "  ·  " + Component.translatable("screen.neverket-minimap.biome", biome).getString();
+			}
+		}
+		int textX = mapX + 5;
+		int textY = mapY + mapHeight - 12;
+		graphics.fill(textX - 3, textY - 2, textX + this.font.width(text) + 3, textY + 10, 0xA0101216);
+		graphics.text(this.font, text, textX, textY, 0xFFF0F0F0, true);
+	}
+
+	private String biomeAt(int worldX, int worldZ) {
+		if (this.minecraft.level == null || !this.dimension.equals(this.minecraft.level.dimension().identifier().toString())) {
+			return "";
+		}
+		int biomeX = Math.floorDiv(worldX, 4);
+		int biomeZ = Math.floorDiv(worldZ, 4);
+		if (this.dimension.equals(this.biomeCacheDimension) && biomeX == this.biomeCacheX && biomeZ == this.biomeCacheZ) {
+			return this.biomeCache;
+		}
+		this.biomeCacheDimension = this.dimension;
+		this.biomeCacheX = biomeX;
+		this.biomeCacheZ = biomeZ;
+		LevelChunk chunk = this.minecraft.level.getChunkSource().getChunk(
+			Math.floorDiv(worldX, 16), Math.floorDiv(worldZ, 16), ChunkStatus.FULL, false
+		);
+		if (chunk == null) {
+			this.biomeCacheX = Integer.MIN_VALUE;
+			this.biomeCacheZ = Integer.MIN_VALUE;
+			return Component.translatable("screen.neverket-minimap.biome_unknown").getString();
+		}
+		int height = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, worldX & 15, worldZ & 15);
+		this.biomeCache = this.minecraft.level.getBiome(new BlockPos(worldX, height, worldZ))
+			.unwrapKey()
+			.map(key -> Component.translatable("biome." + key.identifier().getNamespace() + "." + key.identifier().getPath()).getString())
+			.orElseGet(() -> Component.translatable("screen.neverket-minimap.biome_unknown").getString());
+		return this.biomeCache;
+	}
+
 	private void nextDimension() {
 		if (this.dimensions.isEmpty()) {
 			return;
@@ -249,9 +316,13 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	private static int adaptiveTextureSize(int displaySize, int minimum, int maximum) {
-		int scaled = (displaySize * 3 + 3) / 4;
-		int aligned = Math.ceilDiv(scaled, 64) * 64;
+		int aligned = Math.ceilDiv(displaySize, 64) * 64;
 		return Math.clamp(aligned, minimum, maximum);
+	}
+
+	private boolean useDetailedTerrain() {
+		return this.config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN
+			|| this.config.mapDetailMode == ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL;
 	}
 
 	private Component dimensionLabel() {

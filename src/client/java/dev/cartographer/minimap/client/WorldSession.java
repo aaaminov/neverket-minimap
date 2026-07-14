@@ -2,6 +2,7 @@ package dev.cartographer.minimap.client;
 
 import dev.cartographer.minimap.atlas.MapAtlas;
 import dev.cartographer.minimap.storage.AtlasStorage;
+import dev.cartographer.minimap.config.ModConfig;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -12,19 +13,22 @@ import net.minecraft.world.level.storage.LevelResource;
 import org.slf4j.Logger;
 
 public final class WorldSession implements AutoCloseable {
-	private static final int AUTO_SAVE_INTERVAL_TICKS = 200;
+	private static final int AUTO_SAVE_INTERVAL_TICKS = 600;
 
 	private final AtlasStorage storage;
 	private final MapDataCollector collector = new MapDataCollector();
+	private final TerrainDataCollector terrainCollector = new TerrainDataCollector();
+	private final ModConfig config;
 	private final Logger logger;
 	private String worldKey;
 	private MapAtlas atlas = new MapAtlas();
 	private long savedVersion;
 	private int ticksUntilSave = AUTO_SAVE_INTERVAL_TICKS;
 
-	public WorldSession(Path atlasDirectory, Logger logger) {
+	public WorldSession(Path atlasDirectory, Logger logger, ModConfig config) {
 		this.storage = new AtlasStorage(atlasDirectory);
 		this.logger = logger;
+		this.config = config;
 	}
 
 	public void tick(Minecraft minecraft) {
@@ -47,7 +51,10 @@ public final class WorldSession implements AutoCloseable {
 			}
 		}
 
-		this.collector.tick(minecraft, this.atlas);
+		if (this.config.recordingMode == ModConfig.RecordingMode.MAPS) {
+			this.collector.tick(minecraft, this.atlas);
+		}
+		this.terrainCollector.tick(minecraft, this.atlas, this.config);
 		if (--this.ticksUntilSave <= 0) {
 			this.saveIfNeeded();
 			this.ticksUntilSave = AUTO_SAVE_INTERVAL_TICKS;

@@ -9,6 +9,7 @@ import net.minecraft.network.chat.Component;
 public final class SettingsScreen extends Screen {
 	private static final int BUTTON_WIDTH = 190;
 	private final ModConfig config;
+	private Button mapDetailButton;
 
 	public SettingsScreen(ModConfig config) {
 		super(Component.translatable("screen.neverket-minimap.settings"));
@@ -19,34 +20,55 @@ public final class SettingsScreen extends Screen {
 	protected void init() {
 		int left = this.width / 2 - BUTTON_WIDTH - 4;
 		int right = this.width / 2 + 4;
-		int y = 38;
+		int y = 28;
 
 		this.cyclingButton(left, y, "corner", () -> this.config.corner.name(), () -> this.config.corner = this.config.corner.next());
 		this.cyclingButton(right, y, "size", () -> this.config.size + " px", () -> this.config.size = this.config.size >= 256 ? 96 : this.config.size + 32);
-		y += 24;
+		y += 22;
 		this.cyclingButton(left, y, "shape", () -> this.config.shape.name(), () -> this.config.shape = this.config.shape.next());
 		this.cyclingButton(right, y, "opacity", () -> Math.round(this.config.opacity * 100) + "%", () -> this.config.opacity = this.config.opacity >= 1.0F ? 0.25F : this.config.opacity + 0.25F);
-		y += 24;
+		y += 22;
 		this.cyclingButton(left, y, "zoom", () -> this.config.zoom + " blocks/px", () -> this.config.zoom = this.config.zoom >= 32 ? 1 : this.config.zoom * 2);
 		this.cyclingButton(right, y, "coordinates", () -> onOff(this.config.showCoordinates), () -> this.config.showCoordinates = !this.config.showCoordinates);
-		y += 24;
+		y += 22;
 		this.cyclingButton(left, y, "cardinals", () -> onOff(this.config.showCardinalDirections), () -> this.config.showCardinalDirections = !this.config.showCardinalDirections);
 		this.cyclingButton(right, y, "unknown", () -> this.config.unknownTerrain.name(), () -> this.config.unknownTerrain = this.config.unknownTerrain.next());
-		y += 24;
+		y += 22;
 		this.cyclingButton(left, y, "fullscreen", () -> onOff(this.config.fullscreenEnabled), () -> this.config.fullscreenEnabled = !this.config.fullscreenEnabled);
 		this.cyclingButton(right, y, "visible", () -> onOff(this.config.visible), () -> this.config.visible = !this.config.visible);
-		y += 24;
+		y += 22;
 		this.cyclingButton(left, y, "terrain_contours", () -> onOff(this.config.showTerrainContours), () -> this.config.showTerrainContours = !this.config.showTerrainContours);
 		this.cyclingButton(right, y, "terrain_contour_range", () -> this.config.terrainContourRangeChunks + " chunks", () -> {
-			this.config.terrainContourRangeChunks = this.config.terrainContourRangeChunks >= 16 ? 2 : this.config.terrainContourRangeChunks + 2;
+			this.config.terrainContourRangeChunks = this.config.terrainContourRangeChunks >= 32 ? 4 : this.config.terrainContourRangeChunks + 4;
 		});
+		y += 22;
+		this.cyclingButton(left, y, "recording_mode", () -> enumValue("recording_mode", this.config.recordingMode), () -> {
+			this.config.recordingMode = this.config.recordingMode.next();
+			this.updateMapDetailButton();
+		});
+		this.mapDetailButton = this.cyclingButton(
+			right,
+			y,
+			"map_detail_mode",
+			() -> enumValue("map_detail_mode", this.config.mapDetailMode),
+			() -> this.config.mapDetailMode = this.config.mapDetailMode.next()
+		);
+		this.updateMapDetailButton();
+		y += 22;
+		this.cyclingButton(
+			left,
+			y,
+			"cursor_biome",
+			() -> onOff(this.config.showCursorBiome),
+			() -> this.config.showCursorBiome = !this.config.showCursorBiome
+		);
 
 		this.addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> this.onClose()).bounds(this.width / 2 - 100, this.height - 32, 200, 20).build());
 	}
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
-		graphics.centeredText(this.font, this.title, this.width / 2, 15, 0xFFFFFFFF);
+		graphics.centeredText(this.font, this.title, this.width / 2, 10, 0xFFFFFFFF);
 		super.extractRenderState(graphics, mouseX, mouseY, a);
 	}
 
@@ -55,13 +77,14 @@ public final class SettingsScreen extends Screen {
 		return true;
 	}
 
-	private void cyclingButton(int x, int y, String key, Value value, Runnable change) {
+	private Button cyclingButton(int x, int y, String key, Value value, Runnable change) {
 		Button button = Button.builder(label(key, value.get()), pressed -> {
 			change.run();
 			this.config.changed();
 			pressed.setMessage(label(key, value.get()));
 		}).bounds(x, y, BUTTON_WIDTH, 20).build();
 		this.addRenderableWidget(button);
+		return button;
 	}
 
 	private static Component label(String key, String value) {
@@ -70,6 +93,16 @@ public final class SettingsScreen extends Screen {
 
 	private static String onOff(boolean value) {
 		return Component.translatable(value ? "options.on" : "options.off").getString();
+	}
+
+	private void updateMapDetailButton() {
+		if (this.mapDetailButton != null) {
+			this.mapDetailButton.active = this.config.recordingMode == ModConfig.RecordingMode.MAPS;
+		}
+	}
+
+	private static String enumValue(String key, Enum<?> value) {
+		return Component.translatable("value.neverket-minimap." + key + "." + value.name().toLowerCase(java.util.Locale.ROOT)).getString();
 	}
 
 	@FunctionalInterface

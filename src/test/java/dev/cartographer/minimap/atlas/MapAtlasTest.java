@@ -87,6 +87,35 @@ class MapAtlasTest {
 		assertEquals(-128, MapCoordinates.centerFromPlayerMarker(-100.0, (byte)56, (byte)0));
 	}
 
+	@Test
+	void storesDetailedTerrainSeparatelyFromVanillaMaps() {
+		MapAtlas atlas = new MapAtlas();
+		atlas.put(solidMap(1, "minecraft:overworld", 0, 0, (byte)0, (byte)4));
+		byte[] terrain = new byte[16 * 16];
+		java.util.Arrays.fill(terrain, (byte)28);
+
+		assertTrue(atlas.putTerrainChunk("minecraft:overworld", -1, -1, terrain));
+		assertTrue(atlas.hasTerrainChunk("minecraft:overworld", -1, -1));
+		assertEquals(28, atlas.colorAt("minecraft:overworld", -1, -1, true));
+		assertEquals(4, atlas.colorAt("minecraft:overworld", -1, -1, false));
+		assertFalse(atlas.putTerrainChunk("minecraft:overworld", -1, -1, terrain));
+	}
+
+	@Test
+	void cachedSamplerMatchesAtlasLayers() {
+		MapAtlas atlas = new MapAtlas();
+		atlas.put(solidMap(1, "minecraft:overworld", 0, 0, (byte)0, (byte)4));
+		byte[] terrain = new byte[16 * 16];
+		java.util.Arrays.fill(terrain, (byte)28);
+		atlas.putTerrainChunk("minecraft:overworld", 0, 0, terrain);
+
+		MapAtlas.ColorSampler detailed = atlas.sampler("minecraft:overworld", true);
+		MapAtlas.ColorSampler mapsOnly = atlas.sampler("minecraft:overworld", false);
+		assertEquals(28, detailed.colorAt(4, 4));
+		assertEquals(4, mapsOnly.colorAt(4, 4));
+		assertEquals(atlas.colorAt("minecraft:overworld", -20, -20, true), detailed.colorAt(-20, -20));
+	}
+
 	private static MapSnapshot solidMap(int id, String dimension, int x, int z, byte scale, byte color) {
 		byte[] colors = new byte[MapSnapshot.PIXEL_COUNT];
 		java.util.Arrays.fill(colors, color);

@@ -8,6 +8,8 @@
   "screen.neverket-minimap.settings": "Neverket Minimap Settings",
   "screen.neverket-minimap.dimension": "Dimension: %s",
   "screen.neverket-minimap.to_player": "To player",
+  "screen.neverket-minimap.biome": "Biome: %s",
+  "screen.neverket-minimap.biome_unknown": "not loaded",
   "screen.neverket-minimap.hint": "Drag to pan · Wheel to zoom · %s blocks/pixel",
   "option.neverket-minimap.corner": "Corner",
   "option.neverket-minimap.size": "Size",
@@ -20,5 +22,12 @@
   "option.neverket-minimap.fullscreen": "Fullscreen map",
   "option.neverket-minimap.visible": "Minimap",
   "option.neverket-minimap.terrain_contours": "Local terrain contours",
-  "option.neverket-minimap.terrain_contour_range": "Contour range"
+  "option.neverket-minimap.terrain_contour_range": "Fog range",
+  "option.neverket-minimap.recording_mode": "Record terrain from",
+  "option.neverket-minimap.map_detail_mode": "Map recording",
+  "option.neverket-minimap.cursor_biome": "Biome under cursor",
+  "value.neverket-minimap.recording_mode.maps": "Collected maps",
+  "value.neverket-minimap.recording_mode.explored_terrain": "All explored terrain",
+  "value.neverket-minimap.map_detail_mode.vanilla_pixels": "Vanilla pixels",
+  "value.neverket-minimap.map_detail_mode.loaded_terrain_detail": "Always detailed"
 }
