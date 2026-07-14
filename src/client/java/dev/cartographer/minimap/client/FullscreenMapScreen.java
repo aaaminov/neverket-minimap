@@ -84,7 +84,7 @@ public final class FullscreenMapScreen extends Screen {
 		int mapHeight = Math.max(64, this.height - MAP_TOP - MAP_BOTTOM);
 		this.viewTexture.update(
 			this.session.atlas(), this.dimension, this.centerX, this.centerZ, this.zoom, mapWidth, mapHeight,
-			false, this.config.unknownTerrain, this.useDetailedTerrain(), this.dragging,
+			false, this.config.unknownTerrain, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(), this.dragging,
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks
 		);
 		boolean viewingCurrentDimension = this.minecraft.level != null
@@ -152,7 +152,7 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public boolean isPauseScreen() {
-		return true;
+		return this.config.pauseOnFullscreenMap;
 	}
 
 	@Override
@@ -319,13 +319,16 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	private static int adaptiveTextureSize(int displaySize, int minimum, int maximum) {
-		int aligned = Math.ceilDiv(displaySize, 64) * 64;
-		return Math.clamp(aligned, minimum, maximum);
+		return Math.clamp(displaySize, minimum, maximum);
 	}
 
 	private boolean useDetailedTerrain() {
 		return this.config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN
 			|| this.config.mapDetailMode == ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL;
+	}
+
+	private boolean detailedTerrainRequiresMapCoverage() {
+		return this.config.recordingMode == ModConfig.RecordingMode.MAPS;
 	}
 
 	private Component dimensionLabel() {

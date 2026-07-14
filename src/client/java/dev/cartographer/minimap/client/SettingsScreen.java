@@ -81,6 +81,13 @@ public final class SettingsScreen extends Screen {
 			() -> Math.round(this.config.nightDarkness * 100.0F) + "%",
 			() -> this.config.nightDarkness = this.config.nightDarkness >= 0.75F ? 0.15F : this.config.nightDarkness + 0.15F
 		);
+		this.cyclingButton(
+			right,
+			y,
+			"pause_fullscreen",
+			() -> onOff(this.config.pauseOnFullscreenMap),
+			() -> this.config.pauseOnFullscreenMap = !this.config.pauseOnFullscreenMap
+		);
 		this.updateNightDarknessButton();
 
 		this.addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> this.onClose()).bounds(this.width / 2 - 100, this.height - 32, 200, 20).build());

@@ -33,7 +33,7 @@ public final class MapViewTexture implements AutoCloseable {
 	private final int overscan;
 	private final int textureWidth;
 	private final int textureHeight;
-	private SmoothDynamicTexture texture;
+	private CrispDynamicTexture texture;
 	private String lastDimension;
 	private double lastSampleCenterX = Double.NaN;
 	private double lastSampleCenterZ = Double.NaN;
@@ -43,6 +43,7 @@ public final class MapViewTexture implements AutoCloseable {
 	private boolean lastCircular;
 	private UnknownTerrain lastUnknown;
 	private boolean lastIncludeDetailedTerrain;
+	private boolean lastDetailedTerrainRequiresMapCoverage;
 	private long lastAtlasVersion = Long.MIN_VALUE;
 	private boolean lastTerrainContours;
 	private int lastTerrainContourRange;
@@ -79,6 +80,7 @@ public final class MapViewTexture implements AutoCloseable {
 		boolean circular,
 		UnknownTerrain unknown,
 		boolean includeDetailedTerrain,
+		boolean detailedTerrainRequiresMapCoverage,
 		boolean deferContentUpdates,
 		boolean showTerrainContours,
 		int terrainContourRangeChunks
@@ -108,6 +110,7 @@ public final class MapViewTexture implements AutoCloseable {
 			&& circular == this.lastCircular
 			&& unknown == this.lastUnknown
 			&& includeDetailedTerrain == this.lastIncludeDetailedTerrain
+			&& detailedTerrainRequiresMapCoverage == this.lastDetailedTerrainRequiresMapCoverage
 			&& terrainContours == this.lastTerrainContours
 			&& effectiveContourRange == this.lastTerrainContourRange;
 		if (geometryUnchanged) {
@@ -125,7 +128,9 @@ public final class MapViewTexture implements AutoCloseable {
 		int[] terrainHeights = terrainContours ? new int[pixelCount] : null;
 		byte[] terrainKinds = terrainContours ? new byte[pixelCount] : null;
 		byte[] terrainFade = terrainContours ? new byte[pixelCount] : null;
-		MapAtlas.ColorSampler colorSampler = atlas.sampler(dimension, includeDetailedTerrain);
+		MapAtlas.ColorSampler colorSampler = atlas.sampler(
+			dimension, includeDetailedTerrain, detailedTerrainRequiresMapCoverage
+		);
 		LoadedTerrainSampler terrainSampler = terrainContours ? new LoadedTerrainSampler() : null;
 		if (terrainHeights != null) {
 			Arrays.fill(terrainHeights, NO_HEIGHT);
@@ -176,6 +181,7 @@ public final class MapViewTexture implements AutoCloseable {
 		this.lastCircular = circular;
 		this.lastUnknown = unknown;
 		this.lastIncludeDetailedTerrain = includeDetailedTerrain;
+		this.lastDetailedTerrainRequiresMapCoverage = detailedTerrainRequiresMapCoverage;
 		this.lastTerrainContours = terrainContours;
 		this.lastTerrainContourRange = effectiveContourRange;
 		this.lastTerrainRefresh = terrainRefresh;
@@ -280,7 +286,7 @@ public final class MapViewTexture implements AutoCloseable {
 
 	private double snapCenter(double center, double blocksPerTexturePixel) {
 		if (this.centerSnapPixels == 0) {
-			return Math.floor(center);
+			return Math.floor(center / blocksPerTexturePixel) * blocksPerTexturePixel;
 		}
 		double step = blocksPerTexturePixel * this.centerSnapPixels;
 		return Math.floor(center / step) * step;
@@ -335,15 +341,15 @@ public final class MapViewTexture implements AutoCloseable {
 
 	private void ensureCreated() {
 		if (this.texture == null) {
-			this.texture = new SmoothDynamicTexture(() -> "Neverket Minimap " + this.id, this.textureWidth, this.textureHeight);
+			this.texture = new CrispDynamicTexture(() -> "Neverket Minimap " + this.id, this.textureWidth, this.textureHeight);
 			this.minecraft.getTextureManager().register(this.id, this.texture);
 		}
 	}
 
-	private static final class SmoothDynamicTexture extends DynamicTexture {
-		private SmoothDynamicTexture(java.util.function.Supplier<String> label, int width, int height) {
+	private static final class CrispDynamicTexture extends DynamicTexture {
+		private CrispDynamicTexture(java.util.function.Supplier<String> label, int width, int height) {
 			super(label, width, height, true);
-			this.sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
+			this.sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
 		}
 	}
 

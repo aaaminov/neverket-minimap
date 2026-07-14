@@ -116,6 +116,22 @@ class MapAtlasTest {
 		assertEquals(atlas.colorAt("minecraft:overworld", -20, -20, true), detailed.colorAt(-20, -20));
 	}
 
+	@Test
+	void detailedTerrainCanBeRestrictedToKnownMapPixels() {
+		MapAtlas atlas = new MapAtlas();
+		byte[] mapColors = new byte[MapSnapshot.PIXEL_COUNT];
+		mapColors[64 + 64 * 128] = 4;
+		atlas.put(new MapSnapshot(1, "minecraft:overworld", 0, 0, (byte)0, mapColors));
+		byte[] terrain = new byte[16 * 16];
+		java.util.Arrays.fill(terrain, (byte)28);
+		atlas.putTerrainChunk("minecraft:overworld", 0, 0, terrain);
+
+		MapAtlas.ColorSampler sampler = atlas.sampler("minecraft:overworld", true, true);
+
+		assertEquals(28, sampler.colorAt(0, 0));
+		assertEquals(0, sampler.colorAt(1, 0));
+	}
+
 	private static MapSnapshot solidMap(int id, String dimension, int x, int z, byte scale, byte color) {
 		byte[] colors = new byte[MapSnapshot.PIXEL_COUNT];
 		java.util.Arrays.fill(colors, color);

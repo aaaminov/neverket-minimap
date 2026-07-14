@@ -60,7 +60,11 @@ public final class MapAtlas {
 	}
 
 	public ColorSampler sampler(String dimension, boolean includeDetailedTerrain) {
-		return new ColorSampler(dimension, includeDetailedTerrain);
+		return this.sampler(dimension, includeDetailedTerrain, false);
+	}
+
+	public ColorSampler sampler(String dimension, boolean includeDetailedTerrain, boolean detailedTerrainRequiresMapCoverage) {
+		return new ColorSampler(dimension, includeDetailedTerrain, detailedTerrainRequiresMapCoverage);
 	}
 
 	private int mapColorAt(String dimension, int worldX, int worldZ) {
@@ -239,14 +243,16 @@ public final class MapAtlas {
 	public final class ColorSampler {
 		private final String dimension;
 		private final boolean includeDetailedTerrain;
+		private final boolean detailedTerrainRequiresMapCoverage;
 		private int bucketX = Integer.MIN_VALUE;
 		private int bucketZ = Integer.MIN_VALUE;
 		private byte[] terrainColors;
 		private List<MapSnapshot> mapCandidates;
 
-		private ColorSampler(String dimension, boolean includeDetailedTerrain) {
+		private ColorSampler(String dimension, boolean includeDetailedTerrain, boolean detailedTerrainRequiresMapCoverage) {
 			this.dimension = dimension;
 			this.includeDetailedTerrain = includeDetailedTerrain;
+			this.detailedTerrainRequiresMapCoverage = detailedTerrainRequiresMapCoverage;
 		}
 
 		public int colorAt(int worldX, int worldZ) {
@@ -262,18 +268,19 @@ public final class MapAtlas {
 				this.mapCandidates = mapLayer == null ? null : mapLayer.get(key);
 			}
 
+			int terrainColor = 0;
 			if (this.terrainColors != null) {
 				int index = Math.floorMod(worldX, INDEX_BUCKET_SIZE) + Math.floorMod(worldZ, INDEX_BUCKET_SIZE) * INDEX_BUCKET_SIZE;
-				int color = this.terrainColors[index] & 0xFF;
-				if (color != 0) {
-					return color;
+				terrainColor = this.terrainColors[index] & 0xFF;
+				if (terrainColor != 0 && !this.detailedTerrainRequiresMapCoverage) {
+					return terrainColor;
 				}
 			}
 			if (this.mapCandidates != null) {
 				for (MapSnapshot candidate : this.mapCandidates) {
-					int color = candidate.colorAt(worldX, worldZ) & 0xFF;
-					if (color != 0) {
-						return color;
+					int mapColor = candidate.colorAt(worldX, worldZ) & 0xFF;
+					if (mapColor != 0) {
+						return terrainColor != 0 ? terrainColor : mapColor;
 					}
 				}
 			}

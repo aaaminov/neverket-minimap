@@ -11,19 +11,19 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 
 public final class MinimapRenderer implements AutoCloseable {
-	private static final int TEXTURE_SIZE = 256;
 	private static final int MARGIN = 8;
 
 	private final Minecraft minecraft;
 	private final WorldSession session;
 	private final ModConfig config;
-	private final MapViewTexture viewTexture;
+	private MapViewTexture viewTexture;
+	private int viewSize;
 
 	public MinimapRenderer(Minecraft minecraft, WorldSession session, ModConfig config) {
 		this.minecraft = minecraft;
 		this.session = session;
 		this.config = config;
-		this.viewTexture = new MapViewTexture(minecraft, Identifier.fromNamespaceAndPath("neverket-minimap", "hud_view"), TEXTURE_SIZE, TEXTURE_SIZE);
+		this.resizeViewTexture(config.size);
 	}
 
 	public void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
@@ -32,6 +32,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		}
 
 		int size = this.config.size;
+		this.resizeViewTexture(size);
 		int x = switch (this.config.corner) {
 			case TOP_LEFT, BOTTOM_LEFT -> MARGIN;
 			case TOP_RIGHT, BOTTOM_RIGHT -> graphics.guiWidth() - size - MARGIN;
@@ -48,7 +49,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		this.viewTexture.update(
 			this.session.atlas(), dimension, playerPosition.x, playerPosition.z, this.config.zoom, size, size,
 			this.config.shape == ModConfig.Shape.CIRCLE, this.config.unknownTerrain,
-			this.useDetailedTerrain(), false,
+			this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(), false,
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks
 		);
 
@@ -75,6 +76,26 @@ public final class MinimapRenderer implements AutoCloseable {
 	private boolean useDetailedTerrain() {
 		return this.config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN
 			|| this.config.mapDetailMode == ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL;
+	}
+
+	private boolean detailedTerrainRequiresMapCoverage() {
+		return this.config.recordingMode == ModConfig.RecordingMode.MAPS;
+	}
+
+	private void resizeViewTexture(int size) {
+		if (this.viewTexture != null && this.viewSize == size) {
+			return;
+		}
+		if (this.viewTexture != null) {
+			this.viewTexture.close();
+		}
+		this.viewSize = size;
+		this.viewTexture = new MapViewTexture(
+			this.minecraft,
+			Identifier.fromNamespaceAndPath("neverket-minimap", "hud_view"),
+			size,
+			size
+		);
 	}
 
 	private boolean hasVisibleEffects() {
@@ -114,6 +135,8 @@ public final class MinimapRenderer implements AutoCloseable {
 
 	@Override
 	public void close() {
-		this.viewTexture.close();
+		if (this.viewTexture != null) {
+			this.viewTexture.close();
+		}
 	}
 }

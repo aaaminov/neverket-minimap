@@ -21,6 +21,7 @@ public final class ModConfig {
 	public boolean showCardinalDirections = true;
 	public UnknownTerrain unknownTerrain = UnknownTerrain.DARK;
 	public boolean fullscreenEnabled = true;
+	public boolean pauseOnFullscreenMap = true;
 	public boolean visible = true;
 	public boolean showTerrainContours = false;
 	public int terrainContourRangeChunks = 8;

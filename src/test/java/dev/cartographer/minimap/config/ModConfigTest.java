@@ -1,6 +1,7 @@
 package dev.cartographer.minimap.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,6 +19,7 @@ class ModConfigTest {
 
 		assertEquals(ModConfig.Corner.TOP_LEFT, config.corner);
 		assertEquals(0.45F, config.nightDarkness);
+		assertTrue(config.pauseOnFullscreenMap);
 	}
 
 	@Test
