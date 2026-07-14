@@ -27,6 +27,7 @@ public final class ModConfig {
 	public RecordingMode recordingMode = RecordingMode.MAPS;
 	public MapDetailMode mapDetailMode = MapDetailMode.VANILLA_PIXELS;
 	public boolean showCursorBiome = true;
+	public MapLightingMode mapLightingMode = MapLightingMode.DAY_NIGHT;
 
 	private transient Path path;
 	private transient long revision;
@@ -78,6 +79,7 @@ public final class ModConfig {
 		if (this.unknownTerrain == null) this.unknownTerrain = UnknownTerrain.DARK;
 		if (this.recordingMode == null) this.recordingMode = RecordingMode.MAPS;
 		if (this.mapDetailMode == null) this.mapDetailMode = MapDetailMode.VANILLA_PIXELS;
+		if (this.mapLightingMode == null) this.mapLightingMode = MapLightingMode.DAY_NIGHT;
 		this.size = Math.clamp(this.size, 96, 256);
 		this.opacity = Math.clamp(this.opacity, 0.25F, 1.0F);
 		this.zoom = Math.clamp(this.zoom, 1, 32);
@@ -120,6 +122,14 @@ public final class ModConfig {
 		VANILLA_PIXELS, LOADED_TERRAIN_DETAIL;
 
 		public MapDetailMode next() {
+			return values()[(this.ordinal() + 1) % values().length];
+		}
+	}
+
+	public enum MapLightingMode {
+		ALWAYS_BRIGHT, DAY_NIGHT;
+
+		public MapLightingMode next() {
 			return values()[(this.ordinal() + 1) % values().length];
 		}
 	}

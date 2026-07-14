@@ -26,8 +26,11 @@
   "option.neverket-minimap.recording_mode": "Записывать",
   "option.neverket-minimap.map_detail_mode": "Запись с карт",
   "option.neverket-minimap.cursor_biome": "Биом под курсором",
+  "option.neverket-minimap.map_lighting": "Освещение карты",
   "value.neverket-minimap.recording_mode.maps": "Сделанные карты",
   "value.neverket-minimap.recording_mode.explored_terrain": "Всю исследованную местность",
   "value.neverket-minimap.map_detail_mode.vanilla_pixels": "Пиксельно, как в оригинале",
-  "value.neverket-minimap.map_detail_mode.loaded_terrain_detail": "Всегда детально"
+  "value.neverket-minimap.map_detail_mode.loaded_terrain_detail": "Всегда детально",
+  "value.neverket-minimap.map_lighting.always_bright": "Всегда светлая",
+  "value.neverket-minimap.map_lighting.day_night": "День и ночь"
 }

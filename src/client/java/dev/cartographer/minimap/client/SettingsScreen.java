@@ -62,6 +62,13 @@ public final class SettingsScreen extends Screen {
 			() -> onOff(this.config.showCursorBiome),
 			() -> this.config.showCursorBiome = !this.config.showCursorBiome
 		);
+		this.cyclingButton(
+			right,
+			y,
+			"map_lighting",
+			() -> enumValue("map_lighting", this.config.mapLightingMode),
+			() -> this.config.mapLightingMode = this.config.mapLightingMode.next()
+		);
 
 		this.addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> this.onClose()).bounds(this.width / 2 - 100, this.height - 32, 200, 20).build());
 	}

@@ -50,10 +50,10 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 		this.toggleKey = register("toggle", GLFW.GLFW_KEY_H, category);
 		this.zoomKey = register("zoom", GLFW.GLFW_KEY_EQUAL, category);
 		this.fullscreenKey = register("fullscreen", GLFW.GLFW_KEY_M, category);
-		this.settingsKey = register("settings", GLFW.GLFW_KEY_K, category);
+		this.settingsKey = register("settings", GLFW.GLFW_KEY_N, category);
 
 		ClientTickEvents.END_CLIENT_TICK.register(this::tick);
-		HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, id("minimap"), this.renderer::render);
+		HudElementRegistry.attachElementBefore(VanillaHudElements.HOTBAR, id("minimap"), this.renderer::render);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> this.close());
 		LOGGER.info("Neverket Minimap initialized");
 	}

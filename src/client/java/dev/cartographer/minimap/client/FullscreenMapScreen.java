@@ -87,7 +87,10 @@ public final class FullscreenMapScreen extends Screen {
 			false, this.config.unknownTerrain, this.useDetailedTerrain(), this.dragging,
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks
 		);
-		this.viewTexture.blit(graphics, mapX, mapY, mapWidth, mapHeight, 0xFFFFFFFF);
+		boolean viewingCurrentDimension = this.minecraft.level != null
+			&& this.dimension.equals(this.minecraft.level.dimension().identifier().toString());
+		int mapTint = viewingCurrentDimension ? MinimapRenderer.mapTint(this.minecraft, this.config, 1.0F) : 0xFFFFFFFF;
+		this.viewTexture.blit(graphics, mapX, mapY, mapWidth, mapHeight, mapTint);
 		this.drawGrid(graphics, mapX, mapY, mapWidth, mapHeight);
 		this.drawPlayer(graphics, mapX, mapY, mapWidth, mapHeight, partialTick);
 		this.drawBorder(graphics, mapX, mapY, mapWidth, mapHeight);

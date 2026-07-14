@@ -26,8 +26,11 @@
   "option.neverket-minimap.recording_mode": "Record terrain from",
   "option.neverket-minimap.map_detail_mode": "Map recording",
   "option.neverket-minimap.cursor_biome": "Biome under cursor",
+  "option.neverket-minimap.map_lighting": "Map lighting",
   "value.neverket-minimap.recording_mode.maps": "Collected maps",
   "value.neverket-minimap.recording_mode.explored_terrain": "All explored terrain",
   "value.neverket-minimap.map_detail_mode.vanilla_pixels": "Vanilla pixels",
-  "value.neverket-minimap.map_detail_mode.loaded_terrain_detail": "Always detailed"
+  "value.neverket-minimap.map_detail_mode.loaded_terrain_detail": "Always detailed",
+  "value.neverket-minimap.map_lighting.always_bright": "Always bright",
+  "value.neverket-minimap.map_lighting.day_night": "Day and night"
 }

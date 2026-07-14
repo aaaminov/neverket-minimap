@@ -34,11 +34,12 @@ public final class MinimapRenderer implements AutoCloseable {
 		int size = this.config.size;
 		int x = switch (this.config.corner) {
 			case TOP_LEFT, BOTTOM_LEFT -> MARGIN;
-			case TOP_RIGHT, BOTTOM_RIGHT -> graphics.guiWidth() - size - MARGIN;
+			case TOP_RIGHT -> graphics.guiWidth() - size - MARGIN - (this.hasVisibleEffects() ? 28 : 0);
+			case BOTTOM_RIGHT -> graphics.guiWidth() - size - MARGIN;
 		};
 		int y = switch (this.config.corner) {
 			case TOP_LEFT, TOP_RIGHT -> MARGIN;
-			case BOTTOM_LEFT, BOTTOM_RIGHT -> graphics.guiHeight() - size - MARGIN;
+			case BOTTOM_LEFT, BOTTOM_RIGHT -> Math.max(MARGIN, graphics.guiHeight() - size - MARGIN - 52);
 		};
 
 		float partialTick = deltaTracker.getGameTimeDeltaPartialTick(true);
@@ -51,7 +52,7 @@ public final class MinimapRenderer implements AutoCloseable {
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks
 		);
 
-		int tint = ((int)(this.config.opacity * 255.0F) << 24) | 0xFFFFFF;
+		int tint = mapTint(this.minecraft, this.config, this.config.opacity);
 		this.viewTexture.blit(graphics, x, y, size, size, tint);
 		if (this.config.shape == ModConfig.Shape.SQUARE) {
 			drawBorder(graphics, x, y, size);
@@ -74,6 +75,22 @@ public final class MinimapRenderer implements AutoCloseable {
 	private boolean useDetailedTerrain() {
 		return this.config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN
 			|| this.config.mapDetailMode == ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL;
+	}
+
+	private boolean hasVisibleEffects() {
+		return this.minecraft.player != null
+			&& this.minecraft.player.getActiveEffects().stream().anyMatch(effect -> effect.isVisible() && effect.showIcon());
+	}
+
+	static int mapTint(Minecraft minecraft, ModConfig config, float opacity) {
+		float brightness = 1.0F;
+		if (config.mapLightingMode == ModConfig.MapLightingMode.DAY_NIGHT && minecraft.level != null
+			&& minecraft.level.dimensionType().hasSkyLight() && !minecraft.level.dimensionType().hasFixedTime()) {
+			brightness = 1.0F - Math.clamp(minecraft.level.getSkyDarken() / 15.0F, 0.0F, 1.0F) * 0.45F;
+		}
+		int alpha = Math.round(Math.clamp(opacity, 0.0F, 1.0F) * 255.0F);
+		int channel = Math.round(brightness * 255.0F);
+		return alpha << 24 | channel << 16 | channel << 8 | channel;
 	}
 
 	static void drawPlayerArrow(GuiGraphicsExtractor graphics, int centerX, int centerY, float yawDegrees) {
