@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "cartographer-minimap",
+  "version": "${version}",
+  "name": "Cartographer Minimap",
+  "description": "A minimap built exclusively from vanilla maps explored by the player.",
+  "authors": ["Cartographer Minimap contributors"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.cartographer.minimap.CartographerMinimapClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": ">=0.154.2"
+  }
+}

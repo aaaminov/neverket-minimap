@@ -1,0 +1,74 @@
+package dev.cartographer.minimap.atlas;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.junit.jupiter.api.Test;
+
+class MapAtlasTest {
+	@Test
+	void mapsWorldCoordinatesToVanillaPixels() {
+		byte[] colors = new byte[MapSnapshot.PIXEL_COUNT];
+		colors[0] = 5;
+		colors[127 + 127 * 128] = 9;
+		MapSnapshot snapshot = new MapSnapshot(1, "minecraft:overworld", 0, 0, (byte)0, colors);
+
+		assertEquals(5, snapshot.colorAt(-64, -64));
+		assertEquals(9, snapshot.colorAt(63, 63));
+		assertEquals(0, snapshot.colorAt(64, 63));
+	}
+
+	@Test
+	void combinesAdjacentMapsAndSeparatesDimensions() {
+		MapAtlas atlas = new MapAtlas();
+		atlas.put(solidMap(1, "minecraft:overworld", 0, 0, (byte)0, (byte)4));
+		atlas.put(solidMap(2, "minecraft:overworld", 128, 0, (byte)0, (byte)8));
+		atlas.put(solidMap(3, "minecraft:the_nether", 0, 0, (byte)0, (byte)12));
+
+		assertEquals(4, atlas.colorAt("minecraft:overworld", 63, 0));
+		assertEquals(8, atlas.colorAt("minecraft:overworld", 64, 0));
+		assertEquals(12, atlas.colorAt("minecraft:the_nether", 0, 0));
+		assertEquals(0, atlas.colorAt("minecraft:the_end", 0, 0));
+	}
+
+	@Test
+	void prefersDetailedKnownPixelsAndFallsBackForUnknownOnes() {
+		MapAtlas atlas = new MapAtlas();
+		atlas.put(solidMap(1, "minecraft:overworld", 0, 0, (byte)1, (byte)20));
+		byte[] detailed = new byte[MapSnapshot.PIXEL_COUNT];
+		detailed[64 + 64 * 128] = 40;
+		atlas.put(new MapSnapshot(2, "minecraft:overworld", 0, 0, (byte)0, detailed));
+
+		assertEquals(40, atlas.colorAt("minecraft:overworld", 0, 0));
+		assertEquals(20, atlas.colorAt("minecraft:overworld", 1, 0));
+	}
+
+	@Test
+	void ignoresUnchangedSnapshots() {
+		MapAtlas atlas = new MapAtlas();
+		MapSnapshot map = solidMap(1, "minecraft:overworld", 0, 0, (byte)0, (byte)4);
+
+		assertTrue(atlas.put(map));
+		assertFalse(atlas.put(map));
+		assertEquals(1, atlas.size());
+	}
+
+	@Test
+	void calculatesLayerBounds() {
+		MapAtlas atlas = new MapAtlas();
+		atlas.put(solidMap(1, "minecraft:overworld", 0, 0, (byte)0, (byte)4));
+		atlas.put(solidMap(2, "minecraft:overworld", 128, 0, (byte)0, (byte)8));
+
+		MapAtlas.Bounds bounds = atlas.bounds("minecraft:overworld").orElseThrow();
+		assertEquals(-64, bounds.minX());
+		assertEquals(192, bounds.maxXExclusive());
+		assertEquals(256, bounds.width());
+	}
+
+	private static MapSnapshot solidMap(int id, String dimension, int x, int z, byte scale, byte color) {
+		byte[] colors = new byte[MapSnapshot.PIXEL_COUNT];
+		java.util.Arrays.fill(colors, color);
+		return new MapSnapshot(id, dimension, x, z, scale, colors);
+	}
+}

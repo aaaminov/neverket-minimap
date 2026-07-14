@@ -1,0 +1,21 @@
+{
+  "key.category.cartographer-minimap.controls": "Cartographer Minimap",
+  "key.cartographer-minimap.toggle": "Show/hide minimap",
+  "key.cartographer-minimap.zoom": "Change minimap zoom",
+  "key.cartographer-minimap.fullscreen": "Open fullscreen map",
+  "key.cartographer-minimap.settings": "Open minimap settings",
+  "screen.cartographer-minimap.fullscreen": "Cartographer Atlas",
+  "screen.cartographer-minimap.settings": "Cartographer Minimap Settings",
+  "screen.cartographer-minimap.dimension": "Dimension: %s",
+  "screen.cartographer-minimap.hint": "Drag to pan · Wheel to zoom · %s blocks/pixel",
+  "option.cartographer-minimap.corner": "Corner",
+  "option.cartographer-minimap.size": "Size",
+  "option.cartographer-minimap.shape": "Shape",
+  "option.cartographer-minimap.opacity": "Opacity",
+  "option.cartographer-minimap.zoom": "Zoom",
+  "option.cartographer-minimap.coordinates": "Coordinates",
+  "option.cartographer-minimap.cardinals": "Cardinal directions",
+  "option.cartographer-minimap.unknown": "Unknown terrain",
+  "option.cartographer-minimap.fullscreen": "Fullscreen map",
+  "option.cartographer-minimap.visible": "Minimap"
+}

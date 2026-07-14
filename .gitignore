@@ -1,0 +1,19 @@
+.gradle/
+.gradle-home/
+build/
+run/
+out/
+*.iml
+.idea/
+.vscode/
+
+# Local toolchains used by automated builds in this workspace.
+.jdk25/
+.jdk25.zip
+.gradle-dist/
+.gradle-*.zip
+.gradle-curl.zip
+.gradle-direct.zip
+.fabric-example/
+.fabric-example*.zip
+.api-src/
