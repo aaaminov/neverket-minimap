@@ -2,12 +2,10 @@ package dev.cartographer.minimap.client;
 
 import dev.cartographer.minimap.config.ModConfig;
 import dev.cartographer.minimap.marker.QuickMarker;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -15,6 +13,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
+import org.lwjgl.glfw.GLFW;
 
 public final class FullscreenMapScreen extends Screen {
 	private static final int MIN_TEXTURE_WIDTH = 512;
@@ -24,8 +23,8 @@ public final class FullscreenMapScreen extends Screen {
 	private static final int PAN_SNAP_TEXTURE_PIXELS = 64;
 	private static final int MAP_GRID_BLOCKS = 128;
 	private static final int MAP_MARGIN = 6;
-	private static final int MAP_TOP = 34;
-	private static final int MAP_BOTTOM = 14;
+	private static final int MAP_TOP = 30;
+	private static final int MAP_BOTTOM = 6;
 
 	private final WorldSession session;
 	private final ModConfig config;
@@ -36,8 +35,6 @@ public final class FullscreenMapScreen extends Screen {
 	private double centerZ;
 	private int zoom;
 	private String dimension;
-	private List<String> dimensions = List.of();
-	private Button dimensionButton;
 	private boolean dragging;
 	private String biomeCacheDimension;
 	private int biomeCacheX = Integer.MIN_VALUE;
@@ -45,6 +42,11 @@ public final class FullscreenMapScreen extends Screen {
 	private String biomeCache = "";
 	private final MapMarkerRenderer markerRenderer;
 	private MapMarkerRenderer.MarkerHit hoveredMarker;
+	private boolean legendVisible;
+	private int legendX;
+	private int legendY;
+	private int legendWidth;
+	private int legendHeight;
 
 	public FullscreenMapScreen(WorldSession session, ModConfig config) {
 		super(Component.translatable("screen.neverket-minimap.fullscreen"));
@@ -60,23 +62,18 @@ public final class FullscreenMapScreen extends Screen {
 	@Override
 	protected void init() {
 		this.resizeViewTexture();
-		this.dimensions = new ArrayList<>(this.session.atlas().dimensions());
-		this.dimensions.sort(Comparator.naturalOrder());
-		if (!this.dimensions.contains(this.dimension) && !this.dimensions.isEmpty()) {
-			this.dimension = this.dimensions.getFirst();
-		}
-
-		int dimensionWidth = Math.min(210, Math.max(120, this.width / 3));
-		this.dimensionButton = this.addRenderableWidget(
-			Button.builder(this.dimensionLabel(), button -> this.nextDimension()).bounds(MAP_MARGIN, 8, dimensionWidth, 20).build()
+		this.addRenderableWidget(
+			Button.builder(Component.translatable("screen.neverket-minimap.legend_button"), button ->
+				this.legendVisible = !this.legendVisible
+			).bounds(this.width - 230, 5, 84, 20).build()
 		);
 		this.addRenderableWidget(
 			Button.builder(Component.translatable("screen.neverket-minimap.to_player"), button -> this.centerOnPlayer())
-				.bounds(this.width / 2 - 55, 8, 110, 20)
+				.bounds(this.width - 142, 5, 78, 20)
 				.build()
 		);
 		this.addRenderableWidget(
-			Button.builder(Component.translatable("gui.done"), button -> this.onClose()).bounds(this.width - 86, 8, 80, 20).build()
+			Button.builder(Component.translatable("gui.done"), button -> this.onClose()).bounds(this.width - 60, 5, 54, 20).build()
 		);
 	}
 
@@ -88,7 +85,7 @@ public final class FullscreenMapScreen extends Screen {
 		int mapHeight = Math.max(64, this.height - MAP_TOP - MAP_BOTTOM);
 		this.viewTexture.update(
 			this.session.atlas(), this.dimension, this.centerX, this.centerZ, this.zoom, mapWidth, mapHeight,
-			false, this.config.unknownTerrain, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(), this.dragging,
+			false, this.config.unknownTerrain, false, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(), this.dragging,
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks
 		);
 		boolean viewingCurrentDimension = this.minecraft.level != null
@@ -103,21 +100,27 @@ public final class FullscreenMapScreen extends Screen {
 		);
 		this.drawPlayer(graphics, mapX, mapY, mapWidth, mapHeight, partialTick);
 		this.drawBorder(graphics, mapX, mapY, mapWidth, mapHeight);
-		this.drawCursorInfo(graphics, mouseX, mouseY, mapX, mapY, mapWidth, mapHeight);
-
-		graphics.centeredText(
-			this.font,
-			Component.translatable("screen.neverket-minimap.hint", this.zoom),
-			this.width / 2,
-			this.height - 11,
-			0xFFE0E0E0
-		);
+		this.drawStatusBar(graphics, mouseX, mouseY, mapX, mapY, mapWidth, mapHeight);
+		this.drawLegend(graphics, mapX, mapY, mapWidth);
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 	}
 
 	@Override
+	public boolean keyPressed(KeyEvent event) {
+		if (event.key() == GLFW.GLFW_KEY_M) {
+			this.onClose();
+			return true;
+		}
+		if (event.key() == GLFW.GLFW_KEY_L) {
+			this.legendVisible = !this.legendVisible;
+			return true;
+		}
+		return super.keyPressed(event);
+	}
+
+	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 1 && this.isInsideMap(event.x(), event.y())) {
+		if (event.button() == 1 && this.isInsideMap(event.x(), event.y()) && !this.isInsideLegend(event.x(), event.y())) {
 			if (this.hoveredMarker != null && this.hoveredMarker.quick()) {
 				this.session.atlas().removeQuickMarker();
 				this.session.saveNow();
@@ -143,7 +146,7 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-		if (event.button() == 0 && this.isInsideMap(event.x(), event.y())) {
+		if (event.button() == 0 && this.isInsideMap(event.x(), event.y()) && !this.isInsideLegend(event.x(), event.y())) {
 			this.dragging = true;
 			this.centerX -= dx * this.zoom;
 			this.centerZ -= dy * this.zoom;
@@ -162,7 +165,7 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-		if (scrollY != 0 && this.isInsideMap(x, y)) {
+		if (scrollY != 0 && this.isInsideMap(x, y) && !this.isInsideLegend(x, y)) {
 			int oldZoom = this.zoom;
 			int newZoom = scrollY > 0 ? Math.max(1, oldZoom / 2) : Math.min(64, oldZoom * 2);
 			if (newZoom != oldZoom) {
@@ -241,23 +244,78 @@ public final class FullscreenMapScreen extends Screen {
 		graphics.fill(x + width, y, x + width + 1, y + height, 0xFF69717B);
 	}
 
-	private void drawCursorInfo(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int mapX, int mapY, int mapWidth, int mapHeight) {
-		if (!this.isInsideMap(mouseX, mouseY)) {
+	private void drawStatusBar(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int mapX, int mapY, int mapWidth, int mapHeight) {
+		boolean cursorOnMap = mouseX >= mapX && mouseX < mapX + mapWidth && mouseY >= mapY && mouseY < mapY + mapHeight;
+		int worldX = cursorOnMap
+			? (int)Math.floor(this.centerX + (mouseX - (mapX + mapWidth / 2.0)) * this.zoom)
+			: (int)Math.floor(this.centerX);
+		int worldZ = cursorOnMap
+			? (int)Math.floor(this.centerZ + (mouseY - (mapY + mapHeight / 2.0)) * this.zoom)
+			: (int)Math.floor(this.centerZ);
+		String text;
+		if (this.biomeVisibleAt(worldX, worldZ)) {
+			String biome = this.biomeAt(worldX, worldZ);
+			if (biome.isEmpty()) {
+				biome = Component.translatable("screen.neverket-minimap.biome_unknown").getString();
+			}
+			text = Component.translatable("screen.neverket-minimap.position", worldX, worldZ, biome).getString();
+		} else {
+			text = Component.translatable("screen.neverket-minimap.position_without_biome", worldX, worldZ).getString();
+		}
+		int maxWidth = Math.max(40, mapWidth - 36);
+		if (this.font.width(text) > maxWidth) {
+			text = this.font.plainSubstrByWidth(text, Math.max(20, maxWidth - this.font.width("..."))) + "...";
+		}
+		int textX = mapX + 18;
+		int textY = mapY + mapHeight - 22;
+		graphics.fill(textX - 4, textY - 3, textX + this.font.width(text) + 4, textY + 11, 0x90101216);
+		graphics.text(this.font, text, textX, textY, 0xFFF0F0F0, true);
+		graphics.text(
+			this.font,
+			Component.translatable("screen.neverket-minimap.zoom_status", this.zoom),
+			MAP_MARGIN,
+			11,
+			0xFFF0F0F0,
+			true
+		);
+	}
+
+	private boolean biomeVisibleAt(int worldX, int worldZ) {
+		return this.config.recordingMode != ModConfig.RecordingMode.MAPS
+			|| this.session.atlas().colorAt(this.dimension, worldX, worldZ, false) != 0;
+	}
+
+	private void drawLegend(GuiGraphicsExtractor graphics, int mapX, int mapY, int mapWidth) {
+		if (!this.legendVisible) {
+			this.legendWidth = 0;
+			this.legendHeight = 0;
 			return;
 		}
-		int worldX = (int)Math.floor(this.centerX + (mouseX - (mapX + mapWidth / 2.0)) * this.zoom);
-		int worldZ = (int)Math.floor(this.centerZ + (mouseY - (mapY + mapHeight / 2.0)) * this.zoom);
-		String text = "X: " + worldX + "  Z: " + worldZ;
-		if (this.config.showCursorBiome) {
-			String biome = this.biomeAt(worldX, worldZ);
-			if (!biome.isEmpty()) {
-				text += "  /  " + Component.translatable("screen.neverket-minimap.biome", biome).getString();
-			}
+		Component title = Component.translatable("screen.neverket-minimap.legend.title");
+		Component[] lines = {
+			Component.translatable("screen.neverket-minimap.legend.pan"),
+			Component.translatable("screen.neverket-minimap.legend.marker"),
+			Component.translatable("screen.neverket-minimap.legend.zoom"),
+			Component.translatable("screen.neverket-minimap.legend.center"),
+			Component.translatable("screen.neverket-minimap.legend.close"),
+			Component.translatable("screen.neverket-minimap.legend.hide")
+		};
+		int contentWidth = this.font.width(title);
+		for (Component line : lines) {
+			contentWidth = Math.max(contentWidth, this.font.width(line));
 		}
-		int textX = mapX + 5;
-		int textY = mapY + mapHeight - 12;
-		graphics.fill(textX - 3, textY - 2, textX + this.font.width(text) + 3, textY + 10, 0xA0101216);
-		graphics.text(this.font, text, textX, textY, 0xFFF0F0F0, true);
+		this.legendWidth = contentWidth + 16;
+		this.legendHeight = 20 + lines.length * 12;
+		this.legendX = mapX + 6;
+		this.legendY = mapY + 6;
+		graphics.fill(this.legendX, this.legendY, this.legendX + this.legendWidth, this.legendY + this.legendHeight, 0xD0101216);
+		graphics.fill(this.legendX, this.legendY, this.legendX + this.legendWidth, this.legendY + 1, 0xFF69717B);
+		graphics.text(this.font, title, this.legendX + 8, this.legendY + 6, 0xFFFFFFFF, true);
+		int lineY = this.legendY + 19;
+		for (Component line : lines) {
+			graphics.text(this.font, line, this.legendX + 8, lineY, 0xFFE0E0E0, false);
+			lineY += 12;
+		}
 	}
 
 	private String biomeAt(int worldX, int worldZ) {
@@ -288,20 +346,6 @@ public final class FullscreenMapScreen extends Screen {
 		return this.biomeCache;
 	}
 
-	private void nextDimension() {
-		if (this.dimensions.isEmpty()) {
-			return;
-		}
-		int index = this.dimensions.indexOf(this.dimension);
-		this.dimension = this.dimensions.get((index + 1) % this.dimensions.size());
-		if (this.minecraft.level != null && this.dimension.equals(this.minecraft.level.dimension().identifier().toString())) {
-			this.centerOnPlayer();
-		} else {
-			this.fitDimension();
-		}
-		this.dimensionButton.setMessage(this.dimensionLabel());
-	}
-
 	private void centerOnPlayer() {
 		if (this.minecraft.player == null || this.minecraft.level == null) {
 			return;
@@ -309,26 +353,15 @@ public final class FullscreenMapScreen extends Screen {
 		this.dimension = this.minecraft.level.dimension().identifier().toString();
 		this.centerX = this.minecraft.player.getX();
 		this.centerZ = this.minecraft.player.getZ();
-		this.dimensionButton.setMessage(this.dimensionLabel());
-	}
-
-	private void fitDimension() {
-		int displayWidth = Math.max(64, this.width - MAP_MARGIN * 2);
-		int displayHeight = Math.max(64, this.height - MAP_TOP - MAP_BOTTOM);
-		this.session.atlas().bounds(this.dimension).ifPresent(bounds -> {
-			this.centerX = (bounds.minX() + (double)bounds.maxXExclusive()) / 2.0;
-			this.centerZ = (bounds.minZ() + (double)bounds.maxZExclusive()) / 2.0;
-			double required = Math.max(bounds.width() / (double)Math.max(1, displayWidth - 16), bounds.height() / (double)Math.max(1, displayHeight - 16));
-			int fittedZoom = 1;
-			while (fittedZoom < required && fittedZoom < 64) {
-				fittedZoom *= 2;
-			}
-			this.zoom = fittedZoom;
-		});
 	}
 
 	private boolean isInsideMap(double x, double y) {
 		return x >= MAP_MARGIN && x < this.width - MAP_MARGIN && y >= MAP_TOP && y < this.height - MAP_BOTTOM;
+	}
+
+	private boolean isInsideLegend(double x, double y) {
+		return this.legendVisible && x >= this.legendX && x < this.legendX + this.legendWidth
+			&& y >= this.legendY && y < this.legendY + this.legendHeight;
 	}
 
 	private int worldXAt(double screenX) {
@@ -375,7 +408,4 @@ public final class FullscreenMapScreen extends Screen {
 		return this.config.recordingMode == ModConfig.RecordingMode.MAPS;
 	}
 
-	private Component dimensionLabel() {
-		return Component.translatable("screen.neverket-minimap.dimension", this.dimension);
-	}
 }

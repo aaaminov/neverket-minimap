@@ -18,7 +18,7 @@ class ModConfigTest {
 		ModConfig config = ModConfig.load(this.directory.resolve("missing.json"));
 
 		assertEquals(ModConfig.Corner.TOP_LEFT, config.corner);
-		assertEquals(0.45F, config.nightDarkness);
+		assertEquals(0.5F, config.nightDarkness);
 		assertTrue(config.pauseOnFullscreenMap);
 		assertEquals(ModConfig.QuickMarkerIcon.TARGET_POINT, config.quickMarkerIcon);
 		assertEquals(5, config.maxEdgeBannerMarkers);
@@ -32,6 +32,19 @@ class ModConfigTest {
 		ModConfig config = ModConfig.load(path);
 
 		assertEquals(ModConfig.Corner.BOTTOM_RIGHT, config.corner);
-		assertEquals(0.45F, config.nightDarkness);
+		assertEquals(0.5F, config.nightDarkness);
+	}
+
+	@Test
+	void nightDarknessIsClampedAndRoundedToTenPercentSteps() throws IOException {
+		Path path = this.directory.resolve("config.json");
+		Files.writeString(path, "{\"nightDarkness\":0.46}");
+
+		ModConfig config = ModConfig.load(path);
+
+		assertEquals(0.5F, config.nightDarkness);
+		config.nightDarkness = 0.0F;
+		config.save();
+		assertEquals(0.0F, config.nightDarkness);
 	}
 }

@@ -29,7 +29,7 @@ public final class ModConfig {
 	public MapDetailMode mapDetailMode = MapDetailMode.VANILLA_PIXELS;
 	public boolean showCursorBiome = true;
 	public MapLightingMode mapLightingMode = MapLightingMode.DAY_NIGHT;
-	public float nightDarkness = 0.45F;
+	public float nightDarkness = 0.5F;
 	public QuickMarkerIcon quickMarkerIcon = QuickMarkerIcon.TARGET_POINT;
 	public int maxEdgeBannerMarkers = 5;
 
@@ -87,9 +87,9 @@ public final class ModConfig {
 		if (this.quickMarkerIcon == null) this.quickMarkerIcon = QuickMarkerIcon.TARGET_POINT;
 		this.size = Math.clamp(this.size, 96, 256);
 		this.opacity = Math.clamp(this.opacity, 0.25F, 1.0F);
-		this.nightDarkness = !Float.isFinite(this.nightDarkness) || this.nightDarkness <= 0.0F
-			? 0.45F
-			: Math.clamp(this.nightDarkness, 0.15F, 0.75F);
+		this.nightDarkness = !Float.isFinite(this.nightDarkness)
+			? 0.5F
+			: Math.round(Math.clamp(this.nightDarkness, 0.0F, 1.0F) * 10.0F) / 10.0F;
 		this.zoom = Math.clamp(this.zoom, 1, 32);
 		this.terrainContourRangeChunks = Math.clamp(this.terrainContourRangeChunks, 2, 32);
 		this.maxEdgeBannerMarkers = Math.clamp(this.maxEdgeBannerMarkers, 0, 10);

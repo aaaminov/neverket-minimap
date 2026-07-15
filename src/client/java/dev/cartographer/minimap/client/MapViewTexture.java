@@ -42,6 +42,7 @@ public final class MapViewTexture implements AutoCloseable {
 	private int lastDisplayHeight;
 	private boolean lastCircular;
 	private UnknownTerrain lastUnknown;
+	private boolean lastDimTransparentUnknown;
 	private boolean lastIncludeDetailedTerrain;
 	private boolean lastDetailedTerrainRequiresMapCoverage;
 	private long lastAtlasVersion = Long.MIN_VALUE;
@@ -79,6 +80,7 @@ public final class MapViewTexture implements AutoCloseable {
 		int displayHeight,
 		boolean circular,
 		UnknownTerrain unknown,
+		boolean dimTransparentUnknown,
 		boolean includeDetailedTerrain,
 		boolean detailedTerrainRequiresMapCoverage,
 		boolean deferContentUpdates,
@@ -109,6 +111,7 @@ public final class MapViewTexture implements AutoCloseable {
 			&& displayHeight == this.lastDisplayHeight
 			&& circular == this.lastCircular
 			&& unknown == this.lastUnknown
+			&& dimTransparentUnknown == this.lastDimTransparentUnknown
 			&& includeDetailedTerrain == this.lastIncludeDetailedTerrain
 			&& detailedTerrainRequiresMapCoverage == this.lastDetailedTerrainRequiresMapCoverage
 			&& terrainContours == this.lastTerrainContours
@@ -123,7 +126,7 @@ public final class MapViewTexture implements AutoCloseable {
 
 		double radius = Math.min(this.viewWidth, this.viewHeight) / 2.0 - 0.5;
 		double radiusSquared = radius * radius;
-		int unknownColor = unknown == UnknownTerrain.DARK ? 0xFF101216 : 0;
+		int unknownColor = unknown == UnknownTerrain.DARK ? 0xFF101216 : dimTransparentUnknown ? 0x50101216 : 0;
 		int pixelCount = this.textureWidth * this.textureHeight;
 		int[] terrainHeights = terrainContours ? new int[pixelCount] : null;
 		byte[] terrainKinds = terrainContours ? new byte[pixelCount] : null;
@@ -180,6 +183,7 @@ public final class MapViewTexture implements AutoCloseable {
 		this.lastDisplayHeight = displayHeight;
 		this.lastCircular = circular;
 		this.lastUnknown = unknown;
+		this.lastDimTransparentUnknown = dimTransparentUnknown;
 		this.lastIncludeDetailedTerrain = includeDetailedTerrain;
 		this.lastDetailedTerrainRequiresMapCoverage = detailedTerrainRequiresMapCoverage;
 		this.lastTerrainContours = terrainContours;

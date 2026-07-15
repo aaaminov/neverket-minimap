@@ -7,6 +7,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.data.AtlasIds;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 
@@ -29,20 +30,23 @@ public final class MinimapRenderer implements AutoCloseable {
 	}
 
 	public void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
-		if (!this.config.visible || this.minecraft.player == null || this.minecraft.level == null || !this.session.active()) {
+		if (!this.config.visible || this.minecraft.gui.screen() instanceof FullscreenMapScreen
+			|| this.minecraft.player == null || this.minecraft.level == null || !this.session.active()) {
 			return;
 		}
 
 		int size = this.config.size;
 		this.resizeViewTexture(size);
+		int cardinalPadding = this.config.showCardinalDirections ? 11 : 0;
+		int bottomTextPadding = cardinalPadding + (this.config.showCoordinates ? 11 : 0);
 		int x = switch (this.config.corner) {
-			case TOP_LEFT, BOTTOM_LEFT -> MARGIN;
-			case TOP_RIGHT, BOTTOM_RIGHT -> graphics.guiWidth() - size - MARGIN;
+			case TOP_LEFT, BOTTOM_LEFT -> MARGIN + cardinalPadding;
+			case TOP_RIGHT, BOTTOM_RIGHT -> graphics.guiWidth() - size - MARGIN - cardinalPadding;
 		};
 		int y = switch (this.config.corner) {
-			case TOP_LEFT -> MARGIN;
-			case TOP_RIGHT -> MARGIN + (this.hasVisibleEffects() ? 28 : 0);
-			case BOTTOM_LEFT, BOTTOM_RIGHT -> Math.max(MARGIN, graphics.guiHeight() - size - MARGIN);
+			case TOP_LEFT -> MARGIN + cardinalPadding;
+			case TOP_RIGHT -> MARGIN + cardinalPadding + (this.hasVisibleEffects() ? 28 : 0);
+			case BOTTOM_LEFT, BOTTOM_RIGHT -> Math.max(MARGIN + cardinalPadding, graphics.guiHeight() - size - MARGIN - bottomTextPadding);
 		};
 
 		float partialTick = deltaTracker.getGameTimeDeltaPartialTick(true);
@@ -50,7 +54,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		String dimension = this.minecraft.level.dimension().identifier().toString();
 		this.viewTexture.update(
 			this.session.atlas(), dimension, playerPosition.x, playerPosition.z, this.config.zoom, size, size,
-			this.config.shape == ModConfig.Shape.CIRCLE, this.config.unknownTerrain,
+			this.config.shape == ModConfig.Shape.CIRCLE, this.config.unknownTerrain, true,
 			this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(), false,
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks
 		);
@@ -69,14 +73,14 @@ public final class MinimapRenderer implements AutoCloseable {
 		drawPlayerArrow(graphics, x + size / 2, y + size / 2, this.minecraft.player.getYRot(partialTick));
 
 		if (this.config.showCardinalDirections) {
-			graphics.centeredText(this.minecraft.font, "N", x + size / 2, y + 3, 0xFFFFFFFF);
-			graphics.centeredText(this.minecraft.font, "S", x + size / 2, y + size - 11, 0xFFFFFFFF);
-			graphics.text(this.minecraft.font, "W", x + 4, y + size / 2 - 4, 0xFFFFFFFF, true);
-			graphics.text(this.minecraft.font, "E", x + size - 10, y + size / 2 - 4, 0xFFFFFFFF, true);
+			graphics.centeredText(this.minecraft.font, Component.translatable("direction.neverket-minimap.north"), x + size / 2, y - 10, 0xFFFFFFFF);
+			graphics.centeredText(this.minecraft.font, Component.translatable("direction.neverket-minimap.south"), x + size / 2, y + size + 2, 0xFFFFFFFF);
+			graphics.text(this.minecraft.font, Component.translatable("direction.neverket-minimap.west"), x - 10, y + size / 2 - 4, 0xFFFFFFFF, true);
+			graphics.text(this.minecraft.font, Component.translatable("direction.neverket-minimap.east"), x + size + 3, y + size / 2 - 4, 0xFFFFFFFF, true);
 		}
 		if (this.config.showCoordinates) {
 			String coordinates = (int)Math.floor(playerPosition.x) + ", " + (int)Math.floor(playerPosition.z);
-			int coordinatesY = y + size - (this.config.showCardinalDirections ? 22 : 11);
+			int coordinatesY = y + size + (this.config.showCardinalDirections ? 13 : 2);
 			graphics.centeredText(this.minecraft.font, coordinates, x + size / 2, coordinatesY, 0xFFFFFFFF);
 		}
 	}

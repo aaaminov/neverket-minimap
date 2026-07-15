@@ -2,6 +2,7 @@ package dev.cartographer.minimap;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.cartographer.minimap.client.FullscreenMapScreen;
+import dev.cartographer.minimap.client.MarkerSettingsScreen;
 import dev.cartographer.minimap.client.MinimapRenderer;
 import dev.cartographer.minimap.client.SettingsScreen;
 import dev.cartographer.minimap.client.WorldSession;
@@ -75,11 +76,15 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 		}
 		while (this.fullscreenKey.consumeClick()) {
 			if (!controlDown && this.config.fullscreenEnabled && minecraft.level != null) {
-				minecraft.gui.setScreen(new FullscreenMapScreen(this.session, this.config));
+				minecraft.gui.setScreen(minecraft.gui.screen() instanceof FullscreenMapScreen
+					? null
+					: new FullscreenMapScreen(this.session, this.config));
 			}
 		}
 		while (this.settingsKey.consumeClick()) {
-			minecraft.gui.setScreen(new SettingsScreen(this.config));
+			boolean settingsOpen = minecraft.gui.screen() instanceof SettingsScreen
+				|| minecraft.gui.screen() instanceof MarkerSettingsScreen;
+			minecraft.gui.setScreen(settingsOpen ? null : new SettingsScreen(this.config));
 		}
 		if (quickMarkerShortcut && !this.quickMarkerShortcutDown && minecraft.gui.screen() == null
 			&& minecraft.player != null && minecraft.level != null) {
