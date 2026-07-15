@@ -51,9 +51,7 @@ public final class WorldSession implements AutoCloseable {
 			}
 		}
 
-		if (this.config.recordingMode == ModConfig.RecordingMode.MAPS) {
-			this.collector.tick(minecraft, this.atlas);
-		}
+		this.collector.tick(minecraft, this.atlas, this.config.recordingMode == ModConfig.RecordingMode.MAPS);
 		this.terrainCollector.tick(minecraft, this.atlas, this.config);
 		if (--this.ticksUntilSave <= 0) {
 			this.saveIfNeeded();
@@ -67,6 +65,10 @@ public final class WorldSession implements AutoCloseable {
 
 	public boolean active() {
 		return this.worldKey != null;
+	}
+
+	public void saveNow() {
+		this.saveIfNeeded();
 	}
 
 	private void unload() {

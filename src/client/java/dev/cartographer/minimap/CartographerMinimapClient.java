@@ -6,6 +6,7 @@ import dev.cartographer.minimap.client.MinimapRenderer;
 import dev.cartographer.minimap.client.SettingsScreen;
 import dev.cartographer.minimap.client.WorldSession;
 import dev.cartographer.minimap.config.ModConfig;
+import dev.cartographer.minimap.marker.QuickMarker;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +36,7 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 	private KeyMapping zoomKey;
 	private KeyMapping fullscreenKey;
 	private KeyMapping settingsKey;
+	private boolean quickMarkerShortcutDown;
 
 	@Override
 	public void onInitializeClient() {
@@ -60,6 +62,9 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 
 	private void tick(Minecraft minecraft) {
 		this.session.tick(minecraft);
+		boolean controlDown = InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_LEFT_CONTROL)
+			|| InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_RIGHT_CONTROL);
+		boolean quickMarkerShortcut = controlDown && InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_M);
 		while (this.toggleKey.consumeClick()) {
 			this.config.visible = !this.config.visible;
 			this.config.changed();
@@ -69,13 +74,28 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 			this.config.changed();
 		}
 		while (this.fullscreenKey.consumeClick()) {
-			if (this.config.fullscreenEnabled && minecraft.level != null) {
+			if (!controlDown && this.config.fullscreenEnabled && minecraft.level != null) {
 				minecraft.gui.setScreen(new FullscreenMapScreen(this.session, this.config));
 			}
 		}
 		while (this.settingsKey.consumeClick()) {
 			minecraft.gui.setScreen(new SettingsScreen(this.config));
 		}
+		if (quickMarkerShortcut && !this.quickMarkerShortcutDown && minecraft.gui.screen() == null
+			&& minecraft.player != null && minecraft.level != null) {
+			if (this.session.atlas().quickMarker().isPresent()) {
+				this.session.atlas().removeQuickMarker();
+			} else {
+				this.session.atlas().putQuickMarker(new QuickMarker(
+					minecraft.level.dimension().identifier().toString(),
+					(int)Math.floor(minecraft.player.getX()),
+					(int)Math.floor(minecraft.player.getZ()),
+					System.currentTimeMillis()
+				));
+			}
+			this.session.saveNow();
+		}
+		this.quickMarkerShortcutDown = quickMarkerShortcut;
 	}
 
 	private void close() {

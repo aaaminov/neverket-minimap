@@ -1,6 +1,7 @@
 package dev.cartographer.minimap.client;
 
 import dev.cartographer.minimap.config.ModConfig;
+import dev.cartographer.minimap.marker.QuickMarker;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -42,11 +43,14 @@ public final class FullscreenMapScreen extends Screen {
 	private int biomeCacheX = Integer.MIN_VALUE;
 	private int biomeCacheZ = Integer.MIN_VALUE;
 	private String biomeCache = "";
+	private final MapMarkerRenderer markerRenderer;
+	private MapMarkerRenderer.MarkerHit hoveredMarker;
 
 	public FullscreenMapScreen(WorldSession session, ModConfig config) {
 		super(Component.translatable("screen.neverket-minimap.fullscreen"));
 		this.session = session;
 		this.config = config;
+		this.markerRenderer = new MapMarkerRenderer(this.minecraft);
 		this.centerX = this.minecraft.player == null ? 0 : this.minecraft.player.getX();
 		this.centerZ = this.minecraft.player == null ? 0 : this.minecraft.player.getZ();
 		this.zoom = config.zoom;
@@ -92,6 +96,11 @@ public final class FullscreenMapScreen extends Screen {
 		int mapTint = viewingCurrentDimension ? MinimapRenderer.mapTint(this.minecraft, this.config, 1.0F) : 0xFFFFFFFF;
 		this.viewTexture.blit(graphics, mapX, mapY, mapWidth, mapHeight, mapTint);
 		this.drawGrid(graphics, mapX, mapY, mapWidth, mapHeight);
+		this.hoveredMarker = this.markerRenderer.render(
+			graphics, this.session.atlas(), this.config, this.dimension,
+			this.centerX, this.centerZ, this.zoom,
+			mapX, mapY, mapWidth, mapHeight, false, mouseX, mouseY, true
+		);
 		this.drawPlayer(graphics, mapX, mapY, mapWidth, mapHeight, partialTick);
 		this.drawBorder(graphics, mapX, mapY, mapWidth, mapHeight);
 		this.drawCursorInfo(graphics, mouseX, mouseY, mapX, mapY, mapWidth, mapHeight);
@@ -104,6 +113,32 @@ public final class FullscreenMapScreen extends Screen {
 			0xFFE0E0E0
 		);
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+	}
+
+	@Override
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		if (event.button() == 1 && this.isInsideMap(event.x(), event.y())) {
+			if (this.hoveredMarker != null && this.hoveredMarker.quick()) {
+				this.session.atlas().removeQuickMarker();
+				this.session.saveNow();
+				return true;
+			}
+			int worldX;
+			int worldZ;
+			if (this.hoveredMarker != null) {
+				worldX = this.hoveredMarker.x();
+				worldZ = this.hoveredMarker.z();
+			} else {
+				worldX = this.worldXAt(event.x());
+				worldZ = this.worldZAt(event.y());
+			}
+			this.session.atlas().putQuickMarker(new QuickMarker(
+				this.dimension, worldX, worldZ, System.currentTimeMillis()
+			));
+			this.session.saveNow();
+			return true;
+		}
+		return super.mouseClicked(event, doubleClick);
 	}
 
 	@Override
@@ -294,6 +329,15 @@ public final class FullscreenMapScreen extends Screen {
 
 	private boolean isInsideMap(double x, double y) {
 		return x >= MAP_MARGIN && x < this.width - MAP_MARGIN && y >= MAP_TOP && y < this.height - MAP_BOTTOM;
+	}
+
+	private int worldXAt(double screenX) {
+		return (int)Math.floor(this.centerX + (screenX - this.width / 2.0) * this.zoom);
+	}
+
+	private int worldZAt(double screenY) {
+		double mapCenterY = MAP_TOP + (this.height - MAP_TOP - MAP_BOTTOM) / 2.0;
+		return (int)Math.floor(this.centerZ + (screenY - mapCenterY) * this.zoom);
 	}
 
 	private void resizeViewTexture() {

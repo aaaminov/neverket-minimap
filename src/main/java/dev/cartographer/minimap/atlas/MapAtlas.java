@@ -1,5 +1,7 @@
 package dev.cartographer.minimap.atlas;
 
+import dev.cartographer.minimap.marker.BannerMarker;
+import dev.cartographer.minimap.marker.QuickMarker;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -18,6 +20,8 @@ public final class MapAtlas {
 	private final Map<String, Map<Long, List<MapSnapshot>>> spatialIndex = new HashMap<>();
 	private final Map<String, Map<Long, byte[]>> terrainTiles = new LinkedHashMap<>();
 	private final Map<String, Set<Long>> terrainChunks = new LinkedHashMap<>();
+	private final Map<Integer, List<BannerMarker>> bannerMarkersByMap = new LinkedHashMap<>();
+	private QuickMarker quickMarker;
 	private long version;
 
 	public boolean put(MapSnapshot snapshot) {
@@ -164,7 +168,78 @@ public final class MapAtlas {
 	public Set<String> dimensions() {
 		Set<String> result = new java.util.HashSet<>(this.snapshots.keySet());
 		result.addAll(this.terrainTiles.keySet());
+		this.bannerMarkersByMap.values().forEach(markers -> markers.forEach(marker -> result.add(marker.dimension())));
+		if (this.quickMarker != null) {
+			result.add(this.quickMarker.dimension());
+		}
 		return Set.copyOf(result);
+	}
+
+	public Optional<QuickMarker> quickMarker() {
+		return Optional.ofNullable(this.quickMarker);
+	}
+
+	public boolean putQuickMarker(QuickMarker marker) {
+		if (marker.equals(this.quickMarker)) {
+			return false;
+		}
+		this.quickMarker = marker;
+		this.version++;
+		return true;
+	}
+
+	public boolean removeQuickMarker() {
+		if (this.quickMarker == null) {
+			return false;
+		}
+		this.quickMarker = null;
+		this.version++;
+		return true;
+	}
+
+	public boolean replaceBannerMarkers(int sourceMapId, Collection<BannerMarker> markers) {
+		List<BannerMarker> previous = this.bannerMarkersByMap.getOrDefault(sourceMapId, List.of());
+		Map<Long, BannerMarker> previousByCoordinate = new LinkedHashMap<>();
+		previous.forEach(marker -> previousByCoordinate.put(bucketKey(marker.x(), marker.z()), marker));
+		Map<Long, BannerMarker> unique = new LinkedHashMap<>();
+		for (BannerMarker marker : markers) {
+			if (marker.sourceMapId() != sourceMapId) {
+				throw new IllegalArgumentException("banner marker source map does not match");
+			}
+			BannerMarker old = previousByCoordinate.get(bucketKey(marker.x(), marker.z()));
+			unique.put(bucketKey(marker.x(), marker.z()), old != null && old.sameContent(marker) ? old : marker);
+		}
+		List<BannerMarker> replacement = List.copyOf(unique.values());
+		if (previous.equals(replacement)) {
+			return false;
+		}
+		if (replacement.isEmpty()) {
+			this.bannerMarkersByMap.remove(sourceMapId);
+		} else {
+			this.bannerMarkersByMap.put(sourceMapId, replacement);
+		}
+		this.version++;
+		return true;
+	}
+
+	public boolean putBannerMarker(BannerMarker marker) {
+		List<BannerMarker> current = new ArrayList<>(this.bannerMarkersByMap.getOrDefault(marker.sourceMapId(), List.of()));
+		current.add(marker);
+		return this.replaceBannerMarkers(marker.sourceMapId(), current);
+	}
+
+	public Collection<BannerMarker> bannerMarkers(String dimension) {
+		Map<Long, BannerMarker> unique = new LinkedHashMap<>();
+		this.bannerMarkersByMap.values().forEach(markers -> markers.stream()
+			.filter(marker -> marker.dimension().equals(dimension))
+			.forEach(marker -> unique.put(bucketKey(marker.x(), marker.z()), marker)));
+		return List.copyOf(unique.values());
+	}
+
+	public Collection<BannerMarker> bannerMarkers() {
+		List<BannerMarker> result = new ArrayList<>();
+		this.bannerMarkersByMap.values().forEach(result::addAll);
+		return List.copyOf(result);
 	}
 
 	public Collection<MapSnapshot> snapshots() {
@@ -188,7 +263,10 @@ public final class MapAtlas {
 	public Optional<Bounds> bounds(String dimension) {
 		Map<Integer, MapSnapshot> layer = this.snapshots.get(dimension);
 		Map<Long, byte[]> terrainLayer = this.terrainTiles.get(dimension);
-		if ((layer == null || layer.isEmpty()) && (terrainLayer == null || terrainLayer.isEmpty())) {
+		Collection<BannerMarker> bannerLayer = this.bannerMarkers(dimension);
+		boolean hasQuickMarker = this.quickMarker != null && this.quickMarker.dimension().equals(dimension);
+		if ((layer == null || layer.isEmpty()) && (terrainLayer == null || terrainLayer.isEmpty())
+			&& bannerLayer.isEmpty() && !hasQuickMarker) {
 			return Optional.empty();
 		}
 		int minX = Integer.MAX_VALUE;
@@ -212,6 +290,20 @@ public final class MapAtlas {
 				maxX = Math.max(maxX, (tileX + 1) * TerrainTile.SIDE);
 				maxZ = Math.max(maxZ, (tileZ + 1) * TerrainTile.SIDE);
 			}
+		}
+		if (!bannerLayer.isEmpty()) {
+			for (BannerMarker marker : bannerLayer) {
+				minX = Math.min(minX, marker.x());
+				minZ = Math.min(minZ, marker.z());
+				maxX = Math.max(maxX, marker.x() + 1);
+				maxZ = Math.max(maxZ, marker.z() + 1);
+			}
+		}
+		if (hasQuickMarker) {
+			minX = Math.min(minX, this.quickMarker.x());
+			minZ = Math.min(minZ, this.quickMarker.z());
+			maxX = Math.max(maxX, this.quickMarker.x() + 1);
+			maxZ = Math.max(maxZ, this.quickMarker.z() + 1);
 		}
 		return Optional.of(new Bounds(minX, minZ, maxX, maxZ));
 	}

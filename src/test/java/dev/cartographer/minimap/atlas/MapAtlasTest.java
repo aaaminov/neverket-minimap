@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.cartographer.minimap.marker.BannerMarker;
+import dev.cartographer.minimap.marker.QuickMarker;
 import org.junit.jupiter.api.Test;
 
 class MapAtlasTest {
@@ -130,6 +132,35 @@ class MapAtlasTest {
 
 		assertEquals(28, sampler.colorAt(0, 0));
 		assertEquals(0, sampler.colorAt(1, 0));
+	}
+
+	@Test
+	void keepsOnlyOneQuickMarker() {
+		MapAtlas atlas = new MapAtlas();
+
+		assertTrue(atlas.putQuickMarker(new QuickMarker("minecraft:overworld", 10, 20, 100L)));
+		assertTrue(atlas.putQuickMarker(new QuickMarker("minecraft:the_nether", -5, 8, 200L)));
+
+		QuickMarker marker = atlas.quickMarker().orElseThrow();
+		assertEquals("minecraft:the_nether", marker.dimension());
+		assertEquals(200L, marker.modifiedAt());
+		assertTrue(atlas.removeQuickMarker());
+		assertTrue(atlas.quickMarker().isEmpty());
+		assertFalse(atlas.removeQuickMarker());
+	}
+
+	@Test
+	void replacesBannerMarkersPerSourceMapAndPreservesObservationTime() {
+		MapAtlas atlas = new MapAtlas();
+		BannerMarker first = new BannerMarker(4, "minecraft:overworld", 10, 20, "Home", "minecraft:red_banner", 100L);
+		assertTrue(atlas.replaceBannerMarkers(4, java.util.List.of(first)));
+
+		BannerMarker sameObservedLater = new BannerMarker(4, "minecraft:overworld", 10, 20, "Home", "minecraft:red_banner", 999L);
+		assertFalse(atlas.replaceBannerMarkers(4, java.util.List.of(sameObservedLater)));
+		assertEquals(100L, atlas.bannerMarkers("minecraft:overworld").iterator().next().modifiedAt());
+
+		assertTrue(atlas.replaceBannerMarkers(4, java.util.List.of()));
+		assertTrue(atlas.bannerMarkers("minecraft:overworld").isEmpty());
 	}
 
 	private static MapSnapshot solidMap(int id, String dimension, int x, int z, byte scale, byte color) {

@@ -90,7 +90,15 @@ public final class SettingsScreen extends Screen {
 		);
 		this.updateNightDarknessButton();
 
-		this.addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> this.onClose()).bounds(this.width / 2 - 100, this.height - 32, 200, 20).build());
+		this.addRenderableWidget(
+			Button.builder(Component.translatable("screen.neverket-minimap.markers_button"), button ->
+				this.minecraft.gui.setScreen(new MarkerSettingsScreen(this, this.config))
+			).bounds(this.width / 2 - 100, this.height - 32, 96, 20).build()
+		);
+		this.addRenderableWidget(
+			Button.builder(Component.translatable("gui.done"), button -> this.onClose())
+				.bounds(this.width / 2 + 4, this.height - 32, 96, 20).build()
+		);
 	}
 
 	@Override

@@ -20,6 +20,8 @@ class ModConfigTest {
 		assertEquals(ModConfig.Corner.TOP_LEFT, config.corner);
 		assertEquals(0.45F, config.nightDarkness);
 		assertTrue(config.pauseOnFullscreenMap);
+		assertEquals(ModConfig.QuickMarkerIcon.TARGET_POINT, config.quickMarkerIcon);
+		assertEquals(5, config.maxEdgeBannerMarkers);
 	}
 
 	@Test

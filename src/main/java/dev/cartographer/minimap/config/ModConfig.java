@@ -30,6 +30,8 @@ public final class ModConfig {
 	public boolean showCursorBiome = true;
 	public MapLightingMode mapLightingMode = MapLightingMode.DAY_NIGHT;
 	public float nightDarkness = 0.45F;
+	public QuickMarkerIcon quickMarkerIcon = QuickMarkerIcon.TARGET_POINT;
+	public int maxEdgeBannerMarkers = 5;
 
 	private transient Path path;
 	private transient long revision;
@@ -82,6 +84,7 @@ public final class ModConfig {
 		if (this.recordingMode == null) this.recordingMode = RecordingMode.MAPS;
 		if (this.mapDetailMode == null) this.mapDetailMode = MapDetailMode.VANILLA_PIXELS;
 		if (this.mapLightingMode == null) this.mapLightingMode = MapLightingMode.DAY_NIGHT;
+		if (this.quickMarkerIcon == null) this.quickMarkerIcon = QuickMarkerIcon.TARGET_POINT;
 		this.size = Math.clamp(this.size, 96, 256);
 		this.opacity = Math.clamp(this.opacity, 0.25F, 1.0F);
 		this.nightDarkness = !Float.isFinite(this.nightDarkness) || this.nightDarkness <= 0.0F
@@ -89,6 +92,7 @@ public final class ModConfig {
 			: Math.clamp(this.nightDarkness, 0.15F, 0.75F);
 		this.zoom = Math.clamp(this.zoom, 1, 32);
 		this.terrainContourRangeChunks = Math.clamp(this.terrainContourRangeChunks, 2, 32);
+		this.maxEdgeBannerMarkers = Math.clamp(this.maxEdgeBannerMarkers, 0, 10);
 	}
 
 	public enum Corner {
@@ -135,6 +139,14 @@ public final class ModConfig {
 		ALWAYS_BRIGHT, DAY_NIGHT;
 
 		public MapLightingMode next() {
+			return values()[(this.ordinal() + 1) % values().length];
+		}
+	}
+
+	public enum QuickMarkerIcon {
+		TARGET_POINT, TARGET_X, RED_MARKER, BLUE_MARKER, RED_X;
+
+		public QuickMarkerIcon next() {
 			return values()[(this.ordinal() + 1) % values().length];
 		}
 	}

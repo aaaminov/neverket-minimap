@@ -16,6 +16,7 @@ public final class MinimapRenderer implements AutoCloseable {
 	private final Minecraft minecraft;
 	private final WorldSession session;
 	private final ModConfig config;
+	private final MapMarkerRenderer markerRenderer;
 	private MapViewTexture viewTexture;
 	private int viewSize;
 
@@ -23,6 +24,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		this.minecraft = minecraft;
 		this.session = session;
 		this.config = config;
+		this.markerRenderer = new MapMarkerRenderer(minecraft);
 		this.resizeViewTexture(config.size);
 	}
 
@@ -58,6 +60,12 @@ public final class MinimapRenderer implements AutoCloseable {
 		if (this.config.shape == ModConfig.Shape.SQUARE) {
 			drawBorder(graphics, x, y, size);
 		}
+		this.markerRenderer.render(
+			graphics, this.session.atlas(), this.config, dimension,
+			playerPosition.x, playerPosition.z, this.config.zoom,
+			x, y, size, size, this.config.shape == ModConfig.Shape.CIRCLE,
+			Integer.MIN_VALUE, Integer.MIN_VALUE, false
+		);
 		drawPlayerArrow(graphics, x + size / 2, y + size / 2, this.minecraft.player.getYRot(partialTick));
 
 		if (this.config.showCardinalDirections) {
