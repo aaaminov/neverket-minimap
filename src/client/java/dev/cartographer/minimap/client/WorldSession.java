@@ -2,6 +2,7 @@ package dev.cartographer.minimap.client;
 
 import dev.cartographer.minimap.atlas.MapAtlas;
 import dev.cartographer.minimap.storage.AtlasStorage;
+import dev.cartographer.minimap.storage.WorldIdentityStore;
 import dev.cartographer.minimap.config.ModConfig;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -37,7 +38,7 @@ public final class WorldSession implements AutoCloseable {
 			return;
 		}
 
-		String currentKey = identifyWorld(minecraft);
+		String currentKey = this.identifyWorld(minecraft);
 		if (!currentKey.equals(this.worldKey)) {
 			this.saveIfNeeded();
 			this.worldKey = currentKey;
@@ -97,12 +98,18 @@ public final class WorldSession implements AutoCloseable {
 		this.saveIfNeeded();
 	}
 
-	private static String identifyWorld(Minecraft minecraft) {
+	private String identifyWorld(Minecraft minecraft) {
 		IntegratedServer server = minecraft.getSingleplayerServer();
 		if (server != null) {
 			Path root = server.getWorldPath(LevelResource.ROOT).normalize();
 			Path fileName = root.getFileName();
-			return "singleplayer:" + (fileName == null ? root : fileName).toString();
+			String folder = (fileName == null ? root : fileName).toString();
+			try {
+				return "singleplayer:" + folder + ":" + WorldIdentityStore.loadOrCreate(root);
+			} catch (IOException exception) {
+				this.logger.error("Could not create a stable minimap identity for {}", root, exception);
+				return "singleplayer-unidentified:" + root.toAbsolutePath().normalize();
+			}
 		}
 
 		ServerData serverData = minecraft.getCurrentServer();
