@@ -129,12 +129,8 @@ public final class MapMarkerRenderer {
 		} catch (RuntimeException ignored) {
 			identifier = MapDecorationTypes.TARGET_POINT.value().assetId();
 		}
-		if (identifier.getNamespace().equals("neverket-minimap") && identifier.getPath().startsWith("custom/")) {
-			drawCustomIcon(graphics, identifier.getPath().substring("custom/".length()), x, y);
-			return;
-		}
-		if (identifier.getNamespace().equals("neverket-minimap") && identifier.getPath().startsWith("tinted/")) {
-			drawTintedVanillaIcon(graphics, identifier.getPath().substring("tinted/".length()), x, y);
+		if (identifier.getNamespace().equals("neverket-minimap") && identifier.getPath().startsWith("recolored/")) {
+			drawRecoloredVanillaIcon(graphics, identifier.getPath().substring("recolored/".length()), x, y);
 			return;
 		}
 		TextureAtlasSprite sprite = this.minecraft.getAtlasManager()
@@ -180,60 +176,72 @@ public final class MapMarkerRenderer {
 			case RED_MARKER -> MapDecorationTypes.RED_MARKER.value().assetId().toString();
 			case BLUE_MARKER -> MapDecorationTypes.BLUE_MARKER.value().assetId().toString();
 			case RED_X -> MapDecorationTypes.RED_X.value().assetId().toString();
-			case CYAN_POINT -> "neverket-minimap:tinted/cyan_point";
-			case GREEN_POINT -> "neverket-minimap:tinted/green_point";
-			case YELLOW_X -> "neverket-minimap:tinted/yellow_x";
-			case PURPLE_X -> "neverket-minimap:tinted/purple_x";
-			case GOLD_DIAMOND -> "neverket-minimap:custom/gold_diamond";
-			case WHITE_STAR -> "neverket-minimap:custom/white_star";
-			case ORANGE_FLAG -> "neverket-minimap:custom/orange_flag";
+			case CYAN_POINT -> "neverket-minimap:recolored/point/cyan";
+			case GREEN_POINT -> "neverket-minimap:recolored/point/green";
+			case YELLOW_POINT -> "neverket-minimap:recolored/point/yellow";
+			case PURPLE_POINT -> "neverket-minimap:recolored/point/purple";
+			case WHITE_POINT -> "neverket-minimap:recolored/point/white";
+			case GREEN_MARKER -> "neverket-minimap:recolored/marker/green";
+			case YELLOW_MARKER -> "neverket-minimap:recolored/marker/yellow";
+			case PURPLE_MARKER -> "neverket-minimap:recolored/marker/purple";
+			case ORANGE_MARKER -> "neverket-minimap:recolored/marker/orange";
+			case CYAN_X -> "neverket-minimap:recolored/cross/cyan";
+			case GREEN_X -> "neverket-minimap:recolored/cross/green";
+			case YELLOW_X -> "neverket-minimap:recolored/cross/yellow";
+			case PURPLE_X -> "neverket-minimap:recolored/cross/purple";
+			case ORANGE_X -> "neverket-minimap:recolored/cross/orange";
 		};
 	}
 
-	private void drawTintedVanillaIcon(GuiGraphicsExtractor graphics, String name, int x, int y) {
-		boolean cross = name.endsWith("_x");
-		Identifier asset = (cross ? MapDecorationTypes.TARGET_X : MapDecorationTypes.TARGET_POINT).value().assetId();
-		int tint = switch (name) {
-			case "cyan_point" -> 0xFF59DDE3;
-			case "green_point" -> 0xFF72D572;
-			case "yellow_x" -> 0xFFFFD75A;
-			case "purple_x" -> 0xFFC58AF9;
-			default -> 0xFFFFFFFF;
-		};
-		TextureAtlasSprite sprite = this.minecraft.getAtlasManager()
-			.getAtlasOrThrow(AtlasIds.MAP_DECORATIONS)
-			.getSprite(asset);
-		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x - ICON_HALF, y - ICON_HALF, ICON_SIZE, ICON_SIZE, tint);
-	}
-
-	private static void drawCustomIcon(GuiGraphicsExtractor graphics, String name, int centerX, int centerY) {
-		PixelIcon icon = switch (name) {
-			case "gold_diamond" -> new PixelIcon(0xFFFFCB45, 0xFFFFEE9A, 0xFF6B4B16, new String[] {
-				".........", "....D....", "...DCD...", "..DCCCD..", ".DCCACCD.",
-				"..DCCCD..", "...DCD...", "....D....", "........."
-			});
-			case "white_star" -> new PixelIcon(0xFFE8E8E8, 0xFFFFFFFF, 0xFF686868, new String[] {
-				".........", "....C....", "....C....", ".CCCCC...", "..CAC....",
-				"..CCC....", ".C...C...", ".........", "........."
-			});
-			case "orange_flag" -> new PixelIcon(0xFFF1873D, 0xFFFFC26D, 0xFF6C3820, new String[] {
-				".........", "..DCCCC..", "..DCACC..", "..DCCCC..", "..D.......",
-				"..D.......", "..D.......", ".DDD......", "........."
-			});
-			default -> null;
-		};
-		if (icon == null) {
+	private static void drawRecoloredVanillaIcon(GuiGraphicsExtractor graphics, String specification, int centerX, int centerY) {
+		String[] parts = specification.split("/", 2);
+		if (parts.length != 2) {
 			return;
 		}
-		int startX = centerX - 4;
-		int startY = centerY - 4;
-		for (int row = 0; row < icon.rows().length; row++) {
-			String pixels = icon.rows()[row];
+		String[] mask = switch (parts[0]) {
+			case "point" -> new String[] {
+				".KKKKKKK", ".KCDDDCK", ".KDDAACK", "..KDADK.", "..KDACK.", "...KCK..", "...KCK..", "....K..."
+			};
+			case "marker" -> new String[] {
+				"....K...", "...KCK..", "..KCDCK.", "..KDADK.", "..KDADK.", "..KCDCK.", "...KKK..", "........"
+			};
+			case "cross" -> new String[] {
+				"KKK..KKK", "KCDKKDCK", ".KCAACK.", "..KCDK..", ".KCDACK.", "KADKKDAK", "KDK..KDK", "KK....KK"
+			};
+			default -> null;
+		};
+		MarkerPalette palette = switch (parts[1]) {
+			case "cyan" -> new MarkerPalette(0xFF249098, 0xFF43C9D0, 0xFF8AF1F3);
+			case "green" -> new MarkerPalette(0xFF397D3D, 0xFF62B967, 0xFFA3E59A);
+			case "yellow" -> new MarkerPalette(0xFF9C761E, 0xFFE0B533, 0xFFFFE783);
+			case "purple" -> new MarkerPalette(0xFF704394, 0xFFA968D0, 0xFFDBA7F5);
+			case "orange" -> new MarkerPalette(0xFF9A4D20, 0xFFE17635, 0xFFFFB064);
+			case "white" -> new MarkerPalette(0xFF929292, 0xFFD0D0D0, 0xFFFFFFFF);
+			default -> null;
+		};
+		if (mask == null || palette == null) {
+			return;
+		}
+		drawPixelMask(graphics, mask, palette.dark(), palette.primary(), palette.highlight(), centerX - 4, centerY - 4);
+	}
+
+	private static void drawPixelMask(
+		GuiGraphicsExtractor graphics,
+		String[] rows,
+		int cColor,
+		int dColor,
+		int aColor,
+		int startX,
+		int startY
+	) {
+		for (int row = 0; row < rows.length; row++) {
+			String pixels = rows[row];
 			for (int column = 0; column < pixels.length(); column++) {
 				int color = switch (pixels.charAt(column)) {
-					case 'D' -> icon.dark();
-					case 'C' -> icon.primary();
-					case 'A' -> icon.accent();
+					case 'K' -> 0xFF000000;
+					case 'C' -> cColor;
+					case 'D' -> dColor;
+					case 'A' -> aColor;
 					default -> 0;
 				};
 				if (color != 0) {
@@ -243,7 +251,7 @@ public final class MapMarkerRenderer {
 		}
 	}
 
-	private record PixelIcon(int primary, int accent, int dark, String[] rows) {
+	private record MarkerPalette(int dark, int primary, int highlight) {
 	}
 
 	private record MarkerView(boolean quick, int x, int z, String name, String assetId, long modifiedAt) {

@@ -90,6 +90,7 @@ public final class MarkerSettingsScreen extends OptionsSubScreen {
 
 		@Override
 		protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+			this.extractDefaultSprite(graphics);
 			MarkerSettingsScreen.this.markerRenderer.drawQuickIcon(graphics, this.icon, this.getX() + 13, this.getY() + this.getHeight() / 2);
 			graphics.centeredText(
 				MarkerSettingsScreen.this.font,

@@ -3,6 +3,7 @@ package dev.cartographer.minimap.atlas;
 import dev.cartographer.minimap.marker.BannerMarker;
 import dev.cartographer.minimap.marker.QuickMarker;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -20,6 +21,7 @@ public final class MapAtlas {
 	private final Map<String, Map<Long, List<MapSnapshot>>> spatialIndex = new HashMap<>();
 	private final Map<String, Map<Long, byte[]>> terrainTiles = new LinkedHashMap<>();
 	private final Map<String, Set<Long>> terrainChunks = new LinkedHashMap<>();
+	private final Map<String, Map<Long, String[]>> biomeChunks = new LinkedHashMap<>();
 	private final Map<Integer, List<BannerMarker>> bannerMarkersByMap = new LinkedHashMap<>();
 	private QuickMarker quickMarker;
 	private long version;
@@ -125,10 +127,70 @@ public final class MapAtlas {
 		return layer != null && layer.contains(bucketKey(chunkX, chunkZ));
 	}
 
+	public boolean putBiomeChunk(String dimension, int chunkX, int chunkZ, String[] biomes) {
+		if (biomes.length != 16) {
+			throw new IllegalArgumentException("biome chunk must contain exactly 16 quart samples");
+		}
+		String[] replacement = Arrays.copyOf(biomes, biomes.length);
+		Map<Long, String[]> layer = this.biomeChunks.computeIfAbsent(dimension, ignored -> new LinkedHashMap<>());
+		long key = bucketKey(chunkX, chunkZ);
+		String[] previous = layer.get(key);
+		if (Arrays.equals(previous, replacement)) {
+			return false;
+		}
+		layer.put(key, replacement);
+		this.version++;
+		return true;
+	}
+
+	public boolean hasBiomeChunk(String dimension, int chunkX, int chunkZ) {
+		Map<Long, String[]> layer = this.biomeChunks.get(dimension);
+		return layer != null && layer.containsKey(bucketKey(chunkX, chunkZ));
+	}
+
+	/** Returns the recorded biome id, or {@code null} when that quart has not been recorded. */
+	public String biomeAt(String dimension, int worldX, int worldZ) {
+		Map<Long, String[]> layer = this.biomeChunks.get(dimension);
+		if (layer == null) {
+			return null;
+		}
+		String[] biomes = layer.get(bucketKey(Math.floorDiv(worldX, 16), Math.floorDiv(worldZ, 16)));
+		if (biomes == null) {
+			return null;
+		}
+		int quartX = Math.floorMod(worldX, 16) / 4;
+		int quartZ = Math.floorMod(worldZ, 16) / 4;
+		String biome = biomes[quartX + quartZ * 4];
+		return biome == null || biome.isBlank() ? null : biome;
+	}
+
+	public BiomeSampler biomeSampler(String dimension) {
+		return new BiomeSampler(dimension);
+	}
+
+	public Collection<BiomeChunk> biomeChunks() {
+		List<BiomeChunk> result = new ArrayList<>();
+		this.biomeChunks.forEach((dimension, chunks) -> chunks.forEach((key, biomes) -> result.add(new BiomeChunk(
+			dimension, (int)(key >> 32), (int)(long)key, Arrays.copyOf(biomes, biomes.length)
+		))));
+		return List.copyOf(result);
+	}
+
+	public void putBiomeChunk(BiomeChunk chunk) {
+		this.putBiomeChunk(chunk.dimension(), chunk.chunkX(), chunk.chunkZ(), chunk.biomes());
+	}
+
 	public boolean hasMapCoverage(String dimension, int chunkX, int chunkZ) {
-		int worldX = chunkX * 16 + 8;
-		int worldZ = chunkZ * 16 + 8;
-		return this.mapColorAt(dimension, worldX, worldZ) != 0;
+		int startX = chunkX * 16;
+		int startZ = chunkZ * 16;
+		for (int z = 0; z < 16; z++) {
+			for (int x = 0; x < 16; x++) {
+				if (this.mapColorAt(dimension, startX + x, startZ + z) != 0) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	public Collection<TerrainTile> terrainTiles() {
@@ -168,6 +230,7 @@ public final class MapAtlas {
 	public Set<String> dimensions() {
 		Set<String> result = new java.util.HashSet<>(this.snapshots.keySet());
 		result.addAll(this.terrainTiles.keySet());
+		result.addAll(this.biomeChunks.keySet());
 		this.bannerMarkersByMap.values().forEach(markers -> markers.forEach(marker -> result.add(marker.dimension())));
 		if (this.quickMarker != null) {
 			result.add(this.quickMarker.dimension());
@@ -380,7 +443,47 @@ public final class MapAtlas {
 		}
 	}
 
+	public final class BiomeSampler {
+		private final String dimension;
+		private int chunkX = Integer.MIN_VALUE;
+		private int chunkZ = Integer.MIN_VALUE;
+		private String[] biomes;
+
+		private BiomeSampler(String dimension) {
+			this.dimension = dimension;
+		}
+
+		public String biomeAt(int worldX, int worldZ) {
+			int currentChunkX = Math.floorDiv(worldX, 16);
+			int currentChunkZ = Math.floorDiv(worldZ, 16);
+			if (currentChunkX != this.chunkX || currentChunkZ != this.chunkZ) {
+				this.chunkX = currentChunkX;
+				this.chunkZ = currentChunkZ;
+				Map<Long, String[]> layer = MapAtlas.this.biomeChunks.get(this.dimension);
+				this.biomes = layer == null ? null : layer.get(bucketKey(currentChunkX, currentChunkZ));
+			}
+			if (this.biomes == null) {
+				return null;
+			}
+			int quartX = Math.floorMod(worldX, 16) / 4;
+			int quartZ = Math.floorMod(worldZ, 16) / 4;
+			String biome = this.biomes[quartX + quartZ * 4];
+			return biome == null || biome.isBlank() ? null : biome;
+		}
+	}
+
 	public record TerrainChunk(String dimension, int chunkX, int chunkZ) {
+	}
+
+	public record BiomeChunk(String dimension, int chunkX, int chunkZ, String[] biomes) {
+		public BiomeChunk {
+			biomes = Arrays.copyOf(biomes, biomes.length);
+		}
+
+		@Override
+		public String[] biomes() {
+			return Arrays.copyOf(this.biomes, this.biomes.length);
+		}
 	}
 
 	public record Bounds(int minX, int minZ, int maxXExclusive, int maxZExclusive) {

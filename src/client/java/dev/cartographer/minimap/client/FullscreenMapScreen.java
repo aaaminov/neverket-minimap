@@ -291,8 +291,9 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	private boolean biomeVisibleAt(int worldX, int worldZ) {
-		return this.config.recordingMode != ModConfig.RecordingMode.MAPS
-			|| this.session.atlas().colorAt(this.dimension, worldX, worldZ, false) != 0;
+		return this.config.recordingMode == ModConfig.RecordingMode.MAPS
+			? this.session.atlas().colorAt(this.dimension, worldX, worldZ, false) != 0
+			: this.session.atlas().colorAt(this.dimension, worldX, worldZ, true) != 0;
 	}
 
 	private void drawLegend(GuiGraphicsExtractor graphics, int mapX, int mapY, int mapWidth) {
@@ -330,9 +331,6 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	private String biomeAt(int worldX, int worldZ) {
-		if (this.minecraft.level == null || !this.dimension.equals(this.minecraft.level.dimension().identifier().toString())) {
-			return "";
-		}
 		int biomeX = Math.floorDiv(worldX, 4);
 		int biomeZ = Math.floorDiv(worldZ, 4);
 		if (this.dimension.equals(this.biomeCacheDimension) && biomeX == this.biomeCacheX && biomeZ == this.biomeCacheZ) {
@@ -341,6 +339,15 @@ public final class FullscreenMapScreen extends Screen {
 		this.biomeCacheDimension = this.dimension;
 		this.biomeCacheX = biomeX;
 		this.biomeCacheZ = biomeZ;
+		String recordedBiome = this.session.atlas().biomeAt(this.dimension, worldX, worldZ);
+		if (recordedBiome != null) {
+			this.biomeCache = translatedBiome(recordedBiome);
+			return this.biomeCache;
+		}
+		if (this.minecraft.level == null || !this.dimension.equals(this.minecraft.level.dimension().identifier().toString())) {
+			this.biomeCache = Component.translatable("screen.neverket-minimap.biome_unknown").getString();
+			return this.biomeCache;
+		}
 		LevelChunk chunk = this.minecraft.level.getChunkSource().getChunk(
 			Math.floorDiv(worldX, 16), Math.floorDiv(worldZ, 16), ChunkStatus.FULL, false
 		);
@@ -355,6 +362,15 @@ public final class FullscreenMapScreen extends Screen {
 			.map(key -> Component.translatable("biome." + key.identifier().getNamespace() + "." + key.identifier().getPath()).getString())
 			.orElseGet(() -> Component.translatable("screen.neverket-minimap.biome_unknown").getString());
 		return this.biomeCache;
+	}
+
+	private static String translatedBiome(String biomeId) {
+		try {
+			Identifier id = Identifier.parse(biomeId);
+			return Component.translatable("biome." + id.getNamespace() + "." + id.getPath()).getString();
+		} catch (RuntimeException ignored) {
+			return Component.translatable("screen.neverket-minimap.biome_unknown").getString();
+		}
 	}
 
 	private void centerOnPlayer() {

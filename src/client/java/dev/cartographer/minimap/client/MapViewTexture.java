@@ -5,8 +5,6 @@ import com.mojang.blaze3d.textures.FilterMode;
 import dev.cartographer.minimap.atlas.MapAtlas;
 import dev.cartographer.minimap.config.ModConfig.UnknownTerrain;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -112,11 +110,8 @@ public final class MapViewTexture implements AutoCloseable {
 			? Math.min(Math.min(terrainContourRangeChunks, this.minecraft.options.getEffectiveRenderDistance()), 32)
 			: 0;
 		long terrainRefresh = terrainContours ? this.minecraft.level.getGameTime() / 20L : 0L;
-		boolean biomeHighlight = highlightKnownBiomes
-			&& this.minecraft.level != null
-			&& this.minecraft.player != null
-			&& dimension.equals(this.minecraft.level.dimension().identifier().toString());
-		long biomeHighlightRefresh = biomeHighlight ? this.minecraft.level.getGameTime() / 20L : 0L;
+		boolean biomeHighlight = highlightKnownBiomes;
+		long biomeHighlightRefresh = 0L;
 		boolean geometryUnchanged = dimension.equals(this.lastDimension)
 			&& sampleCenterX == this.lastSampleCenterX
 			&& sampleCenterZ == this.lastSampleCenterZ
@@ -154,7 +149,7 @@ public final class MapViewTexture implements AutoCloseable {
 			dimension, includeDetailedTerrain, detailedTerrainRequiresMapCoverage
 		);
 		LoadedTerrainSampler terrainSampler = terrainContours ? new LoadedTerrainSampler() : null;
-		LoadedBiomeSampler biomeSampler = biomeHighlight ? new LoadedBiomeSampler(this.minecraft) : null;
+		MapAtlas.BiomeSampler biomeSampler = biomeHighlight ? atlas.biomeSampler(dimension) : null;
 		if (terrainHeights != null) {
 			Arrays.fill(terrainHeights, NO_HEIGHT);
 		}
@@ -173,7 +168,7 @@ public final class MapViewTexture implements AutoCloseable {
 				int packedColor = colorSampler.colorAt(worldX, worldZ);
 				if (packedColor != 0) {
 					int color = PACKED_MAP_COLORS[packedColor & 0xFF];
-					if (biomeSampler != null && biomeSampler.knownAt(worldX, worldZ)) {
+					if (biomeSampler != null && biomeSampler.biomeAt(worldX, worldZ) != null) {
 						color = alphaOver(color, 0xFF000000 | biomeHighlightColor & 0xFFFFFF, biomeHighlightOpacity);
 					}
 					this.texture.getPixels().setPixel(x, y, color);
@@ -368,31 +363,6 @@ public final class MapViewTexture implements AutoCloseable {
 				this.chunk = level.getChunkSource().getChunk(requestedChunkX, requestedChunkZ, ChunkStatus.FULL, false);
 			}
 			return this.chunk;
-		}
-	}
-
-	private static final class LoadedBiomeSampler {
-		private final ClientLevel level;
-		private final int playerChunkX;
-		private final int playerChunkZ;
-		private final int range;
-		private final Map<Long, Boolean> loadedChunks = new HashMap<>();
-
-		private LoadedBiomeSampler(Minecraft minecraft) {
-			this.level = minecraft.level;
-			this.playerChunkX = Math.floorDiv((int)Math.floor(minecraft.player.getX()), 16);
-			this.playerChunkZ = Math.floorDiv((int)Math.floor(minecraft.player.getZ()), 16);
-			this.range = minecraft.options.getEffectiveRenderDistance() + 2;
-		}
-
-		private boolean knownAt(int worldX, int worldZ) {
-			int chunkX = Math.floorDiv(worldX, 16);
-			int chunkZ = Math.floorDiv(worldZ, 16);
-			if (Math.abs(chunkX - this.playerChunkX) > this.range || Math.abs(chunkZ - this.playerChunkZ) > this.range) {
-				return false;
-			}
-			long key = (long)chunkX << 32 ^ chunkZ & 0xFFFFFFFFL;
-			return this.loadedChunks.computeIfAbsent(key, ignored -> this.level.hasChunk(chunkX, chunkZ));
 		}
 	}
 

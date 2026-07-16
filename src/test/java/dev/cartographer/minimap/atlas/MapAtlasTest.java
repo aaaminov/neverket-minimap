@@ -2,6 +2,7 @@ package dev.cartographer.minimap.atlas;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.cartographer.minimap.marker.BannerMarker;
@@ -132,6 +133,32 @@ class MapAtlasTest {
 
 		assertEquals(28, sampler.colorAt(0, 0));
 		assertEquals(0, sampler.colorAt(1, 0));
+	}
+
+	@Test
+	void storesAndSamplesSurfaceBiomesAtQuartResolution() {
+		MapAtlas atlas = new MapAtlas();
+		String[] biomes = new String[16];
+		biomes[0] = "minecraft:plains";
+		biomes[15] = "minecraft:desert";
+
+		assertTrue(atlas.putBiomeChunk("minecraft:overworld", -2, 3, biomes));
+		assertTrue(atlas.hasBiomeChunk("minecraft:overworld", -2, 3));
+		assertEquals("minecraft:plains", atlas.biomeAt("minecraft:overworld", -32, 48));
+		assertEquals("minecraft:desert", atlas.biomeSampler("minecraft:overworld").biomeAt(-17, 63));
+		assertNull(atlas.biomeAt("minecraft:overworld", -28, 48));
+		assertNull(atlas.biomeAt("minecraft:the_nether", -32, 48));
+	}
+
+	@Test
+	void mapCoverageIncludesPartiallyColoredChunks() {
+		MapAtlas atlas = new MapAtlas();
+		byte[] colors = new byte[MapSnapshot.PIXEL_COUNT];
+		colors[0] = 4;
+		atlas.put(new MapSnapshot(1, "minecraft:overworld", 0, 0, (byte)0, colors));
+
+		assertTrue(atlas.hasMapCoverage("minecraft:overworld", -4, -4));
+		assertFalse(atlas.hasMapCoverage("minecraft:overworld", -3, -4));
 	}
 
 	@Test

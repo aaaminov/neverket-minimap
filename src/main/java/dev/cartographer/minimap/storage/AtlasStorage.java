@@ -23,7 +23,7 @@ import java.util.HexFormat;
 import java.util.List;
 
 public final class AtlasStorage {
-	private static final int FORMAT_VERSION = 5;
+	private static final int FORMAT_VERSION = 6;
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
 	private final Path directory;
@@ -75,6 +75,11 @@ public final class AtlasStorage {
 					));
 				}
 			}
+			if (stored.format >= 6 && stored.biomeChunks != null) {
+				for (StoredBiomeChunk chunk : stored.biomeChunks) {
+					atlas.putBiomeChunk(new MapAtlas.BiomeChunk(chunk.dimension, chunk.chunkX, chunk.chunkZ, chunk.biomes));
+				}
+			}
 		}
 		return atlas;
 	}
@@ -104,11 +109,15 @@ public final class AtlasStorage {
 				marker.sourceMapId(), marker.dimension(), marker.x(), marker.z(), marker.name(), marker.assetId(), marker.modifiedAt()
 			));
 		}
+		List<StoredBiomeChunk> biomeChunks = new ArrayList<>();
+		for (MapAtlas.BiomeChunk chunk : atlas.biomeChunks()) {
+			biomeChunks.add(new StoredBiomeChunk(chunk.dimension(), chunk.chunkX(), chunk.chunkZ(), chunk.biomes()));
+		}
 
 		Path target = this.fileFor(worldKey);
 		Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
 		try (Writer writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {
-			GSON.toJson(new StoredAtlas(FORMAT_VERSION, worldKey, maps, terrain, terrainChunks, quickMarker, bannerMarkers), writer);
+			GSON.toJson(new StoredAtlas(FORMAT_VERSION, worldKey, maps, terrain, terrainChunks, quickMarker, bannerMarkers, biomeChunks), writer);
 		}
 
 		try {
@@ -135,7 +144,8 @@ public final class AtlasStorage {
 		List<StoredTerrainTile> terrain,
 		List<StoredTerrainChunk> terrainChunks,
 		StoredQuickMarker quickMarker,
-		List<StoredBannerMarker> bannerMarkers
+		List<StoredBannerMarker> bannerMarkers,
+		List<StoredBiomeChunk> biomeChunks
 	) {
 	}
 
@@ -152,5 +162,8 @@ public final class AtlasStorage {
 	}
 
 	private record StoredBannerMarker(int sourceMapId, String dimension, int x, int z, String name, String assetId, long modifiedAt) {
+	}
+
+	private record StoredBiomeChunk(String dimension, int chunkX, int chunkZ, String[] biomes) {
 	}
 }

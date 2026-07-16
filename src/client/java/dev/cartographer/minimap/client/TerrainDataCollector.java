@@ -15,7 +15,7 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.MapColor;
 
-/** Incrementally records block-resolution colors from chunks already loaded by the client. */
+/** Incrementally records surface colors and biome quart samples from chunks already loaded by the client. */
 public final class TerrainDataCollector {
 	private static final int MAX_RANGE_CHUNKS = 32;
 	private static final int MIN_BACKGROUND_CHUNKS_PER_TICK = 2;
@@ -35,13 +35,6 @@ public final class TerrainDataCollector {
 			this.reset();
 			return;
 		}
-		boolean recordAllExplored = config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN;
-		boolean addDetailToMaps = config.recordingMode == ModConfig.RecordingMode.MAPS
-			&& config.mapDetailMode == ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL;
-		if (!recordAllExplored && !addDetailToMaps) {
-			return;
-		}
-
 		ClientLevel level = minecraft.level;
 		String currentDimension = level.dimension().identifier().toString();
 		int playerChunkX = Math.floorDiv((int)Math.floor(minecraft.player.getX()), 16);
@@ -85,18 +78,47 @@ public final class TerrainDataCollector {
 		int chunkX,
 		int chunkZ
 	) {
-		if (atlas.hasTerrainChunk(dimension, chunkX, chunkZ)) {
+		if (config.recordingMode == ModConfig.RecordingMode.MAPS && !atlas.hasMapCoverage(dimension, chunkX, chunkZ)) {
 			return false;
 		}
-		if (config.recordingMode == ModConfig.RecordingMode.MAPS && !atlas.hasMapCoverage(dimension, chunkX, chunkZ)) {
+		boolean recordTerrain = config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN
+			|| config.mapDetailMode == ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL;
+		boolean needsTerrain = recordTerrain && !atlas.hasTerrainChunk(dimension, chunkX, chunkZ);
+		boolean needsBiomes = !atlas.hasBiomeChunk(dimension, chunkX, chunkZ);
+		if (!needsTerrain && !needsBiomes) {
 			return false;
 		}
 		LevelChunk chunk = level.getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
 		if (chunk == null) {
 			return false;
 		}
-		atlas.putTerrainChunk(dimension, chunkX, chunkZ, this.sampleChunk(level, chunk, chunkX, chunkZ));
+		if (needsBiomes) {
+			atlas.putBiomeChunk(dimension, chunkX, chunkZ, this.sampleBiomeChunk(level, chunk, chunkX, chunkZ));
+		}
+		if (needsTerrain) {
+			atlas.putTerrainChunk(dimension, chunkX, chunkZ, this.sampleChunk(level, chunk, chunkX, chunkZ));
+		}
 		return true;
+	}
+
+	private String[] sampleBiomeChunk(ClientLevel level, LevelChunk chunk, int chunkX, int chunkZ) {
+		String[] biomes = new String[4 * 4];
+		BlockPos.MutableBlockPos position = new BlockPos.MutableBlockPos();
+		for (int quartZ = 0; quartZ < 4; quartZ++) {
+			for (int quartX = 0; quartX < 4; quartX++) {
+				int localX = quartX * 4 + 2;
+				int localZ = quartZ * 4 + 2;
+				int worldX = chunkX * 16 + localX;
+				int worldZ = chunkZ * 16 + localZ;
+				int height = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, localX, localZ);
+				position.set(worldX, height, worldZ);
+				biomes[quartX + quartZ * 4] = level.getBiome(position)
+					.unwrapKey()
+					.map(key -> key.identifier().toString())
+					.orElse("");
+			}
+		}
+		return biomes;
 	}
 
 	private byte[] sampleChunk(ClientLevel level, LevelChunk chunk, int chunkX, int chunkZ) {

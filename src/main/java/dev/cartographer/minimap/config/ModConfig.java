@@ -154,8 +154,9 @@ public final class ModConfig {
 
 	public enum QuickMarkerIcon {
 		TARGET_POINT, TARGET_X, RED_MARKER, BLUE_MARKER, RED_X,
-		CYAN_POINT, GREEN_POINT, YELLOW_X, PURPLE_X,
-		GOLD_DIAMOND, WHITE_STAR, ORANGE_FLAG;
+		CYAN_POINT, GREEN_POINT, YELLOW_POINT, PURPLE_POINT, WHITE_POINT,
+		GREEN_MARKER, YELLOW_MARKER, PURPLE_MARKER, ORANGE_MARKER,
+		CYAN_X, GREEN_X, YELLOW_X, PURPLE_X, ORANGE_X;
 
 		public QuickMarkerIcon next() {
 			return values()[(this.ordinal() + 1) % values().length];

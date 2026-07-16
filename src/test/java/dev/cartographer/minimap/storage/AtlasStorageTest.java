@@ -25,6 +25,9 @@ class AtlasStorageTest {
 		byte[] terrain = new byte[16 * 16];
 		java.util.Arrays.fill(terrain, (byte)24);
 		original.putTerrainChunk("minecraft:overworld", -3, 5, terrain);
+		String[] biomes = new String[16];
+		java.util.Arrays.fill(biomes, "minecraft:plains");
+		original.putBiomeChunk("minecraft:overworld", -3, 5, biomes);
 		original.putQuickMarker(new QuickMarker("minecraft:the_nether", 12, -34, 123456L));
 		original.putBannerMarker(new BannerMarker(
 			17, "minecraft:overworld", 200, -70, "Home", "minecraft:red_banner", 234567L
@@ -37,6 +40,7 @@ class AtlasStorageTest {
 		assertEquals(42, loaded.snapshots().iterator().next().colors()[1234]);
 		assertTrue(loaded.hasTerrainChunk("minecraft:overworld", -3, 5));
 		assertEquals(24, loaded.colorAt("minecraft:overworld", -40, 88, true));
+		assertEquals("minecraft:plains", loaded.biomeAt("minecraft:overworld", -40, 88));
 		assertEquals(123456L, loaded.quickMarker().orElseThrow().modifiedAt());
 		assertEquals(12, loaded.quickMarker().orElseThrow().x());
 		assertEquals("Home", loaded.bannerMarkers("minecraft:overworld").iterator().next().name());
