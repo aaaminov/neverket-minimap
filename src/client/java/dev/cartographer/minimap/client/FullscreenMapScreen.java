@@ -1,8 +1,8 @@
 package dev.cartographer.minimap.client;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import dev.cartographer.minimap.config.ModConfig;
 import dev.cartographer.minimap.marker.QuickMarker;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -29,6 +29,7 @@ public final class FullscreenMapScreen extends Screen {
 
 	private final WorldSession session;
 	private final ModConfig config;
+	private final KeyMapping biomeHighlightKey;
 	private MapViewTexture viewTexture;
 	private int textureWidth;
 	private int textureHeight;
@@ -48,11 +49,13 @@ public final class FullscreenMapScreen extends Screen {
 	private int legendY;
 	private int legendWidth;
 	private int legendHeight;
+	private boolean biomeHighlightDown;
 
-	public FullscreenMapScreen(WorldSession session, ModConfig config) {
+	public FullscreenMapScreen(WorldSession session, ModConfig config, KeyMapping biomeHighlightKey) {
 		super(Component.translatable("screen.neverket-minimap.fullscreen"));
 		this.session = session;
 		this.config = config;
+		this.biomeHighlightKey = biomeHighlightKey;
 		this.markerRenderer = new MapMarkerRenderer(this.minecraft);
 		this.centerX = this.minecraft.player == null ? 0 : this.minecraft.player.getX();
 		this.centerZ = this.minecraft.player == null ? 0 : this.minecraft.player.getZ();
@@ -84,8 +87,7 @@ public final class FullscreenMapScreen extends Screen {
 		int mapY = MAP_TOP;
 		int mapWidth = Math.max(64, this.width - MAP_MARGIN * 2);
 		int mapHeight = Math.max(64, this.height - MAP_TOP - MAP_BOTTOM);
-		boolean highlightKnownBiomes = InputConstants.isKeyDown(this.minecraft.getWindow(), GLFW.GLFW_KEY_LEFT_ALT)
-			|| InputConstants.isKeyDown(this.minecraft.getWindow(), GLFW.GLFW_KEY_RIGHT_ALT);
+		boolean highlightKnownBiomes = this.biomeHighlightDown || this.biomeHighlightKey.isDown();
 		this.viewTexture.update(
 			this.session.atlas(), this.dimension, this.centerX, this.centerZ, this.zoom, mapWidth, mapHeight,
 			false, this.config.unknownTerrain, false, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(), this.dragging,
@@ -117,6 +119,10 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(KeyEvent event) {
+		if (this.biomeHighlightKey.matches(event)) {
+			this.biomeHighlightDown = true;
+			return true;
+		}
 		if (event.key() == GLFW.GLFW_KEY_M) {
 			this.onClose();
 			return true;
@@ -129,7 +135,20 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	@Override
+	public boolean keyReleased(KeyEvent event) {
+		if (this.biomeHighlightKey.matches(event)) {
+			this.biomeHighlightDown = false;
+			return true;
+		}
+		return super.keyReleased(event);
+	}
+
+	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		if (this.biomeHighlightKey.matchesMouse(event)) {
+			this.biomeHighlightDown = true;
+			return true;
+		}
 		if (event.button() == 1 && this.isInsideMap(event.x(), event.y()) && !this.isInsideLegend(event.x(), event.y())) {
 			if (this.hoveredMarker != null && this.hoveredMarker.quick()) {
 				this.session.atlas().removeQuickMarker();
@@ -167,6 +186,10 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public boolean mouseReleased(MouseButtonEvent event) {
+		if (this.biomeHighlightKey.matchesMouse(event)) {
+			this.biomeHighlightDown = false;
+			return true;
+		}
 		if (event.button() == 0) {
 			this.dragging = false;
 		}
@@ -307,7 +330,7 @@ public final class FullscreenMapScreen extends Screen {
 			Component.translatable("screen.neverket-minimap.legend.pan"),
 			Component.translatable("screen.neverket-minimap.legend.marker"),
 			Component.translatable("screen.neverket-minimap.legend.zoom"),
-			Component.translatable("screen.neverket-minimap.legend.biomes"),
+			Component.translatable("screen.neverket-minimap.legend.biomes", this.biomeHighlightKey.getTranslatedKeyMessage()),
 			Component.translatable("screen.neverket-minimap.legend.center"),
 			Component.translatable("screen.neverket-minimap.legend.close"),
 			Component.translatable("screen.neverket-minimap.legend.hide")

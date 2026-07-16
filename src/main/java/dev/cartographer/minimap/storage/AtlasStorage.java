@@ -1,13 +1,16 @@
 package dev.cartographer.minimap.storage;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import dev.cartographer.minimap.atlas.MapAtlas;
 import dev.cartographer.minimap.atlas.MapSnapshot;
 import dev.cartographer.minimap.atlas.TerrainTile;
 import dev.cartographer.minimap.marker.BannerMarker;
 import dev.cartographer.minimap.marker.QuickMarker;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -21,10 +24,12 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 public final class AtlasStorage {
 	private static final int FORMAT_VERSION = 6;
-	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+	private static final Gson GSON = new Gson();
 
 	private final Path directory;
 
@@ -36,10 +41,13 @@ public final class AtlasStorage {
 		Path file = this.fileFor(worldKey);
 		MapAtlas atlas = new MapAtlas();
 		if (!Files.isRegularFile(file)) {
-			return atlas;
+			file = this.legacyFileFor(worldKey);
+			if (!Files.isRegularFile(file)) {
+				return atlas;
+			}
 		}
 
-		try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+		try (Reader reader = this.openReader(file)) {
 			StoredAtlas stored = GSON.fromJson(reader, StoredAtlas.class);
 			if (stored != null && stored.format == 1) {
 				// Version 1 trusted the placeholder 0,0 center created by the vanilla
@@ -116,7 +124,9 @@ public final class AtlasStorage {
 
 		Path target = this.fileFor(worldKey);
 		Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
-		try (Writer writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {
+		try (Writer writer = new OutputStreamWriter(
+			new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(temporary))), StandardCharsets.UTF_8
+		)) {
 			GSON.toJson(new StoredAtlas(FORMAT_VERSION, worldKey, maps, terrain, terrainChunks, quickMarker, bannerMarkers, biomeChunks), writer);
 		}
 
@@ -128,10 +138,26 @@ public final class AtlasStorage {
 	}
 
 	Path fileFor(String worldKey) {
+		return this.directory.resolve(this.fileStem(worldKey) + ".json.gz");
+	}
+
+	Path legacyFileFor(String worldKey) {
+		return this.directory.resolve(this.fileStem(worldKey) + ".json");
+	}
+
+	private Reader openReader(Path file) throws IOException {
+		BufferedInputStream input = new BufferedInputStream(Files.newInputStream(file));
+		if (file.getFileName().toString().endsWith(".gz")) {
+			return new InputStreamReader(new GZIPInputStream(input), StandardCharsets.UTF_8);
+		}
+		return new InputStreamReader(input, StandardCharsets.UTF_8);
+	}
+
+	private String fileStem(String worldKey) {
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
 			byte[] hash = digest.digest(worldKey.getBytes(StandardCharsets.UTF_8));
-			return this.directory.resolve(HexFormat.of().formatHex(hash, 0, 16) + ".json");
+			return HexFormat.of().formatHex(hash, 0, 16);
 		} catch (NoSuchAlgorithmException impossible) {
 			throw new IllegalStateException("SHA-256 is required by the Java runtime", impossible);
 		}

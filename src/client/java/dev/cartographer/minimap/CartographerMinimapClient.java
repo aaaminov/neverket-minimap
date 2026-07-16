@@ -37,6 +37,7 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 	private KeyMapping zoomKey;
 	private KeyMapping fullscreenKey;
 	private KeyMapping settingsKey;
+	private KeyMapping biomeHighlightKey;
 	private boolean quickMarkerShortcutDown;
 
 	@Override
@@ -54,6 +55,7 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 		this.zoomKey = register("zoom", GLFW.GLFW_KEY_EQUAL, category);
 		this.fullscreenKey = register("fullscreen", GLFW.GLFW_KEY_M, category);
 		this.settingsKey = register("settings", GLFW.GLFW_KEY_N, category);
+		this.biomeHighlightKey = register("biome_highlight", GLFW.GLFW_KEY_LEFT_ALT, category);
 
 		ClientTickEvents.END_CLIENT_TICK.register(this::tick);
 		HudElementRegistry.attachElementBefore(VanillaHudElements.HOTBAR, id("minimap"), this.renderer::render);
@@ -78,7 +80,7 @@ public final class CartographerMinimapClient implements ClientModInitializer {
 			if (!controlDown && this.config.fullscreenEnabled && minecraft.level != null) {
 				minecraft.gui.setScreen(minecraft.gui.screen() instanceof FullscreenMapScreen
 					? null
-					: new FullscreenMapScreen(this.session, this.config));
+					: new FullscreenMapScreen(this.session, this.config, this.biomeHighlightKey));
 			}
 		}
 		while (this.settingsKey.consumeClick()) {

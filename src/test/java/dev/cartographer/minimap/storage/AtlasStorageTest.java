@@ -45,6 +45,9 @@ class AtlasStorageTest {
 		assertEquals(12, loaded.quickMarker().orElseThrow().x());
 		assertEquals("Home", loaded.bannerMarkers("minecraft:overworld").iterator().next().name());
 		assertTrue(java.nio.file.Files.isRegularFile(storage.fileFor("server:example.test")));
+		byte[] compressed = Files.readAllBytes(storage.fileFor("server:example.test"));
+		assertEquals(0x1F, compressed[0] & 0xFF);
+		assertEquals(0x8B, compressed[1] & 0xFF);
 	}
 
 	@Test
@@ -61,7 +64,8 @@ class AtlasStorageTest {
 			  "terrainChunks": []
 			}
 			""".formatted(Base64.getEncoder().encodeToString(colors));
-		Files.writeString(storage.fileFor("server:old.example"), json);
+		Files.createDirectories(directory);
+		Files.writeString(storage.legacyFileFor("server:old.example"), json);
 
 		MapAtlas loaded = storage.load("server:old.example");
 

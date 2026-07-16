@@ -19,9 +19,11 @@ public final class MapAtlas {
 
 	private final Map<String, Map<Integer, MapSnapshot>> snapshots = new LinkedHashMap<>();
 	private final Map<String, Map<Long, List<MapSnapshot>>> spatialIndex = new HashMap<>();
+	private final Map<String, Set<Long>> mapCoveredChunks = new HashMap<>();
 	private final Map<String, Map<Long, byte[]>> terrainTiles = new LinkedHashMap<>();
 	private final Map<String, Set<Long>> terrainChunks = new LinkedHashMap<>();
 	private final Map<String, Map<Long, String[]>> biomeChunks = new LinkedHashMap<>();
+	private final Map<String, String> biomeIdPool = new HashMap<>();
 	private final Map<Integer, List<BannerMarker>> bannerMarkersByMap = new LinkedHashMap<>();
 	private QuickMarker quickMarker;
 	private long version;
@@ -131,7 +133,13 @@ public final class MapAtlas {
 		if (biomes.length != 16) {
 			throw new IllegalArgumentException("biome chunk must contain exactly 16 quart samples");
 		}
-		String[] replacement = Arrays.copyOf(biomes, biomes.length);
+		String[] replacement = new String[biomes.length];
+		for (int index = 0; index < biomes.length; index++) {
+			String biome = biomes[index];
+			replacement[index] = biome == null || biome.isBlank()
+				? ""
+				: this.biomeIdPool.computeIfAbsent(biome, ignored -> biome);
+		}
 		Map<Long, String[]> layer = this.biomeChunks.computeIfAbsent(dimension, ignored -> new LinkedHashMap<>());
 		long key = bucketKey(chunkX, chunkZ);
 		String[] previous = layer.get(key);
@@ -181,16 +189,8 @@ public final class MapAtlas {
 	}
 
 	public boolean hasMapCoverage(String dimension, int chunkX, int chunkZ) {
-		int startX = chunkX * 16;
-		int startZ = chunkZ * 16;
-		for (int z = 0; z < 16; z++) {
-			for (int x = 0; x < 16; x++) {
-				if (this.mapColorAt(dimension, startX + x, startZ + z) != 0) {
-					return true;
-				}
-			}
-		}
-		return false;
+		Set<Long> coverage = this.mapCoveredChunks.get(dimension);
+		return coverage != null && coverage.contains(bucketKey(chunkX, chunkZ));
 	}
 
 	public Collection<TerrainTile> terrainTiles() {
@@ -373,6 +373,7 @@ public final class MapAtlas {
 
 	private void rebuildIndex(String dimension) {
 		Map<Long, List<MapSnapshot>> index = new HashMap<>();
+		Set<Long> coveredChunks = new java.util.HashSet<>();
 		Map<Integer, MapSnapshot> layer = this.snapshots.get(dimension);
 		if (layer != null) {
 			for (MapSnapshot snapshot : layer.values()) {
@@ -385,10 +386,31 @@ public final class MapAtlas {
 						index.computeIfAbsent(bucketKey(bucketX, bucketZ), ignored -> new ArrayList<>()).add(snapshot);
 					}
 				}
+				byte[] colors = snapshot.colors();
+				int blocksPerPixel = snapshot.blocksPerPixel();
+				for (int pixelZ = 0; pixelZ < MapSnapshot.SIDE; pixelZ++) {
+					for (int pixelX = 0; pixelX < MapSnapshot.SIDE; pixelX++) {
+						if (colors[pixelX + pixelZ * MapSnapshot.SIDE] == 0) {
+							continue;
+						}
+						int minWorldX = snapshot.minX() + pixelX * blocksPerPixel;
+						int minWorldZ = snapshot.minZ() + pixelZ * blocksPerPixel;
+						int minChunkX = Math.floorDiv(minWorldX, 16);
+						int minChunkZ = Math.floorDiv(minWorldZ, 16);
+						int maxChunkX = Math.floorDiv(minWorldX + blocksPerPixel - 1, 16);
+						int maxChunkZ = Math.floorDiv(minWorldZ + blocksPerPixel - 1, 16);
+						for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+							for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+								coveredChunks.add(bucketKey(chunkX, chunkZ));
+							}
+						}
+					}
+				}
 			}
 			index.values().forEach(candidates -> candidates.sort(Comparator.comparingInt(MapSnapshot::scale)));
 		}
 		this.spatialIndex.put(dimension, index);
+		this.mapCoveredChunks.put(dimension, coveredChunks);
 	}
 
 	private static long bucketKey(int x, int z) {

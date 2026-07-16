@@ -1,17 +1,24 @@
 package dev.cartographer.minimap.client;
 
+import com.mojang.blaze3d.platform.NativeImage;
 import dev.cartographer.minimap.atlas.MapAtlas;
 import dev.cartographer.minimap.config.ModConfig;
 import dev.cartographer.minimap.marker.BannerMarker;
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.data.AtlasIds;
 import net.minecraft.network.chat.Component;
@@ -23,6 +30,7 @@ public final class MapMarkerRenderer {
 	private static final int ICON_SIZE = 10;
 	private static final int ICON_HALF = ICON_SIZE / 2;
 	private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+	private static final Map<String, Identifier> RECOLORED_TEXTURES = new HashMap<>();
 
 	private final Minecraft minecraft;
 
@@ -48,16 +56,24 @@ public final class MapMarkerRenderer {
 		boolean tooltips
 	) {
 		List<ProjectedMarker> visible = new ArrayList<>();
-		List<ProjectedMarker> edgeBanners = new ArrayList<>();
+		PriorityQueue<ProjectedMarker> edgeBanners = new PriorityQueue<>(
+			Comparator.comparingDouble((ProjectedMarker marker) -> marker.distanceSquared(centerX, centerZ)).reversed()
+		);
 		for (BannerMarker marker : atlas.bannerMarkers(dimension)) {
 			ProjectedMarker projected = this.project(
 				new MarkerView(false, marker.x(), marker.z(), marker.name(), marker.assetId(), marker.modifiedAt()),
 				centerX, centerZ, blocksPerPixel, mapX, mapY, mapWidth, mapHeight, circular
 			);
-			(projected.onMap() ? visible : edgeBanners).add(projected);
+			if (projected.onMap()) {
+				visible.add(projected);
+			} else if (config.maxEdgeBannerMarkers > 0) {
+				edgeBanners.add(projected);
+				if (edgeBanners.size() > config.maxEdgeBannerMarkers) {
+					edgeBanners.poll();
+				}
+			}
 		}
-		edgeBanners.sort(Comparator.comparingDouble(marker -> marker.distanceSquared(centerX, centerZ)));
-		visible.addAll(edgeBanners.subList(0, Math.min(config.maxEdgeBannerMarkers, edgeBanners.size())));
+		visible.addAll(edgeBanners);
 
 		atlas.quickMarker()
 			.filter(marker -> marker.dimension().equals(dimension))
@@ -130,7 +146,7 @@ public final class MapMarkerRenderer {
 			identifier = MapDecorationTypes.TARGET_POINT.value().assetId();
 		}
 		if (identifier.getNamespace().equals("neverket-minimap") && identifier.getPath().startsWith("recolored/")) {
-			drawRecoloredVanillaIcon(graphics, identifier.getPath().substring("recolored/".length()), x, y);
+			this.drawRecoloredVanillaIcon(graphics, identifier.getPath().substring("recolored/".length()), x, y);
 			return;
 		}
 		TextureAtlasSprite sprite = this.minecraft.getAtlasManager()
@@ -193,21 +209,33 @@ public final class MapMarkerRenderer {
 		};
 	}
 
-	private static void drawRecoloredVanillaIcon(GuiGraphicsExtractor graphics, String specification, int centerX, int centerY) {
-		String[] parts = specification.split("/", 2);
-		if (parts.length != 2) {
+	private void drawRecoloredVanillaIcon(GuiGraphicsExtractor graphics, String specification, int centerX, int centerY) {
+		Identifier texture = RECOLORED_TEXTURES.get(specification);
+		if (texture == null) {
+			texture = this.createRecoloredTexture(specification);
+			if (texture != null) {
+				RECOLORED_TEXTURES.put(specification, texture);
+			}
+		}
+		if (texture != null) {
+			graphics.blit(
+				RenderPipelines.GUI_TEXTURED, texture, centerX - ICON_HALF, centerY - ICON_HALF,
+				0.0F, 0.0F, ICON_SIZE, ICON_SIZE, 8, 8, 8, 8
+			);
 			return;
 		}
-		String[] mask = switch (parts[0]) {
-			case "point" -> new String[] {
-				".KKKKKKK", ".KCDDDCK", ".KDDAACK", "..KDADK.", "..KDACK.", "...KCK..", "...KCK..", "....K..."
-			};
-			case "marker" -> new String[] {
-				"....K...", "...KCK..", "..KCDCK.", "..KDADK.", "..KDADK.", "..KCDCK.", "...KKK..", "........"
-			};
-			case "cross" -> new String[] {
-				"KKK..KKK", "KCDKKDCK", ".KCAACK.", "..KCDK..", ".KCDACK.", "KADKKDAK", "KDK..KDK", "KK....KK"
-			};
+		this.drawIcon(graphics, fallbackAsset(specification), centerX, centerY);
+	}
+
+	private Identifier createRecoloredTexture(String specification) {
+		String[] parts = specification.split("/", 2);
+		if (parts.length != 2) {
+			return null;
+		}
+		String source = switch (parts[0]) {
+			case "point" -> "target_point";
+			case "marker" -> "red_marker";
+			case "cross" -> "red_x";
 			default -> null;
 		};
 		MarkerPalette palette = switch (parts[1]) {
@@ -219,36 +247,62 @@ public final class MapMarkerRenderer {
 			case "white" -> new MarkerPalette(0xFF929292, 0xFFD0D0D0, 0xFFFFFFFF);
 			default -> null;
 		};
-		if (mask == null || palette == null) {
-			return;
+		if (source == null || palette == null) {
+			return null;
 		}
-		drawPixelMask(graphics, mask, palette.dark(), palette.primary(), palette.highlight(), centerX - 4, centerY - 4);
-	}
 
-	private static void drawPixelMask(
-		GuiGraphicsExtractor graphics,
-		String[] rows,
-		int cColor,
-		int dColor,
-		int aColor,
-		int startX,
-		int startY
-	) {
-		for (int row = 0; row < rows.length; row++) {
-			String pixels = rows[row];
-			for (int column = 0; column < pixels.length(); column++) {
-				int color = switch (pixels.charAt(column)) {
-					case 'K' -> 0xFF000000;
-					case 'C' -> cColor;
-					case 'D' -> dColor;
-					case 'A' -> aColor;
-					default -> 0;
-				};
-				if (color != 0) {
-					graphics.fill(startX + column, startY + row, startX + column + 1, startY + row + 1, color);
+		Identifier sourceTexture = Identifier.withDefaultNamespace("textures/map/decorations/" + source + ".png");
+		try (InputStream input = this.minecraft.getResourceManager().open(sourceTexture)) {
+			NativeImage image = NativeImage.read(input);
+			if (image.getWidth() != 8 || image.getHeight() != 8) {
+				image.close();
+				return null;
+			}
+			for (int y = 0; y < image.getHeight(); y++) {
+				for (int x = 0; x < image.getWidth(); x++) {
+					image.setPixel(x, y, recolorPixel(image.getPixel(x, y), source, palette));
 				}
 			}
+			Identifier texture = Identifier.fromNamespaceAndPath("neverket-minimap", "generated/marker/" + specification);
+			this.minecraft.getTextureManager().register(texture, new DynamicTexture(texture::toString, image));
+			return texture;
+		} catch (IOException | RuntimeException ignored) {
+			return null;
 		}
+	}
+
+	private static int recolorPixel(int pixel, String source, MarkerPalette palette) {
+		int alpha = pixel >>> 24;
+		int rgb = pixel & 0xFFFFFF;
+		if (alpha == 0 || rgb == 0) {
+			return pixel;
+		}
+		int replacement = switch (source) {
+			case "target_point", "red_marker" -> switch (rgb) {
+				case 0xBC1812 -> palette.dark();
+				case 0xE01D16 -> palette.primary();
+				case 0xFF2119 -> palette.highlight();
+				default -> pixel;
+			};
+			case "red_x" -> switch (rgb) {
+				case 0x99130E -> palette.dark();
+				case 0xC41D17 -> palette.primary();
+				case 0xFF1109 -> palette.highlight();
+				default -> pixel;
+			};
+			default -> pixel;
+		};
+		return replacement == pixel ? pixel : alpha << 24 | replacement & 0xFFFFFF;
+	}
+
+	private static String fallbackAsset(String specification) {
+		if (specification.startsWith("marker/")) {
+			return MapDecorationTypes.RED_MARKER.value().assetId().toString();
+		}
+		if (specification.startsWith("cross/")) {
+			return MapDecorationTypes.RED_X.value().assetId().toString();
+		}
+		return MapDecorationTypes.TARGET_POINT.value().assetId().toString();
 	}
 
 	private record MarkerPalette(int dark, int primary, int highlight) {
