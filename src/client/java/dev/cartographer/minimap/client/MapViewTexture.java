@@ -5,6 +5,8 @@ import com.mojang.blaze3d.textures.FilterMode;
 import dev.cartographer.minimap.atlas.MapAtlas;
 import dev.cartographer.minimap.config.ModConfig.UnknownTerrain;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -49,6 +51,10 @@ public final class MapViewTexture implements AutoCloseable {
 	private boolean lastTerrainContours;
 	private int lastTerrainContourRange;
 	private long lastTerrainRefresh = Long.MIN_VALUE;
+	private boolean lastHighlightKnownBiomes;
+	private int lastBiomeHighlightColor;
+	private float lastBiomeHighlightOpacity;
+	private long lastBiomeHighlightRefresh = Long.MIN_VALUE;
 	private long lastUploadNanos = Long.MIN_VALUE;
 	private float sourceU;
 	private float sourceV;
@@ -85,7 +91,10 @@ public final class MapViewTexture implements AutoCloseable {
 		boolean detailedTerrainRequiresMapCoverage,
 		boolean deferContentUpdates,
 		boolean showTerrainContours,
-		int terrainContourRangeChunks
+		int terrainContourRangeChunks,
+		boolean highlightKnownBiomes,
+		int biomeHighlightColor,
+		float biomeHighlightOpacity
 	) {
 		this.ensureCreated();
 		double blocksPerTexturePixelX = blocksPerScreenPixel * displayWidth / this.viewWidth;
@@ -103,6 +112,11 @@ public final class MapViewTexture implements AutoCloseable {
 			? Math.min(Math.min(terrainContourRangeChunks, this.minecraft.options.getEffectiveRenderDistance()), 32)
 			: 0;
 		long terrainRefresh = terrainContours ? this.minecraft.level.getGameTime() / 20L : 0L;
+		boolean biomeHighlight = highlightKnownBiomes
+			&& this.minecraft.level != null
+			&& this.minecraft.player != null
+			&& dimension.equals(this.minecraft.level.dimension().identifier().toString());
+		long biomeHighlightRefresh = biomeHighlight ? this.minecraft.level.getGameTime() / 20L : 0L;
 		boolean geometryUnchanged = dimension.equals(this.lastDimension)
 			&& sampleCenterX == this.lastSampleCenterX
 			&& sampleCenterZ == this.lastSampleCenterZ
@@ -115,9 +129,14 @@ public final class MapViewTexture implements AutoCloseable {
 			&& includeDetailedTerrain == this.lastIncludeDetailedTerrain
 			&& detailedTerrainRequiresMapCoverage == this.lastDetailedTerrainRequiresMapCoverage
 			&& terrainContours == this.lastTerrainContours
-			&& effectiveContourRange == this.lastTerrainContourRange;
+			&& effectiveContourRange == this.lastTerrainContourRange
+			&& biomeHighlight == this.lastHighlightKnownBiomes
+			&& biomeHighlightColor == this.lastBiomeHighlightColor
+			&& biomeHighlightOpacity == this.lastBiomeHighlightOpacity;
 		if (geometryUnchanged) {
-			boolean contentUnchanged = terrainRefresh == this.lastTerrainRefresh && atlas.version() == this.lastAtlasVersion;
+			boolean contentUnchanged = terrainRefresh == this.lastTerrainRefresh
+				&& biomeHighlightRefresh == this.lastBiomeHighlightRefresh
+				&& atlas.version() == this.lastAtlasVersion;
 			long elapsed = System.nanoTime() - this.lastUploadNanos;
 			if (deferContentUpdates || contentUnchanged || elapsed < CONTENT_REFRESH_INTERVAL_NANOS) {
 				return;
@@ -135,6 +154,7 @@ public final class MapViewTexture implements AutoCloseable {
 			dimension, includeDetailedTerrain, detailedTerrainRequiresMapCoverage
 		);
 		LoadedTerrainSampler terrainSampler = terrainContours ? new LoadedTerrainSampler() : null;
+		LoadedBiomeSampler biomeSampler = biomeHighlight ? new LoadedBiomeSampler(this.minecraft) : null;
 		if (terrainHeights != null) {
 			Arrays.fill(terrainHeights, NO_HEIGHT);
 		}
@@ -152,7 +172,11 @@ public final class MapViewTexture implements AutoCloseable {
 				int worldZ = (int)Math.floor(sampleCenterZ + dz * blocksPerTexturePixelZ);
 				int packedColor = colorSampler.colorAt(worldX, worldZ);
 				if (packedColor != 0) {
-					this.texture.getPixels().setPixel(x, y, PACKED_MAP_COLORS[packedColor & 0xFF]);
+					int color = PACKED_MAP_COLORS[packedColor & 0xFF];
+					if (biomeSampler != null && biomeSampler.knownAt(worldX, worldZ)) {
+						color = alphaOver(color, 0xFF000000 | biomeHighlightColor & 0xFFFFFF, biomeHighlightOpacity);
+					}
+					this.texture.getPixels().setPixel(x, y, color);
 					continue;
 				}
 
@@ -189,6 +213,10 @@ public final class MapViewTexture implements AutoCloseable {
 		this.lastTerrainContours = terrainContours;
 		this.lastTerrainContourRange = effectiveContourRange;
 		this.lastTerrainRefresh = terrainRefresh;
+		this.lastHighlightKnownBiomes = biomeHighlight;
+		this.lastBiomeHighlightColor = biomeHighlightColor;
+		this.lastBiomeHighlightOpacity = biomeHighlightOpacity;
+		this.lastBiomeHighlightRefresh = biomeHighlightRefresh;
 		this.lastAtlasVersion = atlas.version();
 		this.lastUploadNanos = System.nanoTime();
 	}
@@ -340,6 +368,31 @@ public final class MapViewTexture implements AutoCloseable {
 				this.chunk = level.getChunkSource().getChunk(requestedChunkX, requestedChunkZ, ChunkStatus.FULL, false);
 			}
 			return this.chunk;
+		}
+	}
+
+	private static final class LoadedBiomeSampler {
+		private final ClientLevel level;
+		private final int playerChunkX;
+		private final int playerChunkZ;
+		private final int range;
+		private final Map<Long, Boolean> loadedChunks = new HashMap<>();
+
+		private LoadedBiomeSampler(Minecraft minecraft) {
+			this.level = minecraft.level;
+			this.playerChunkX = Math.floorDiv((int)Math.floor(minecraft.player.getX()), 16);
+			this.playerChunkZ = Math.floorDiv((int)Math.floor(minecraft.player.getZ()), 16);
+			this.range = minecraft.options.getEffectiveRenderDistance() + 2;
+		}
+
+		private boolean knownAt(int worldX, int worldZ) {
+			int chunkX = Math.floorDiv(worldX, 16);
+			int chunkZ = Math.floorDiv(worldZ, 16);
+			if (Math.abs(chunkX - this.playerChunkX) > this.range || Math.abs(chunkZ - this.playerChunkZ) > this.range) {
+				return false;
+			}
+			long key = (long)chunkX << 32 ^ chunkZ & 0xFFFFFFFFL;
+			return this.loadedChunks.computeIfAbsent(key, ignored -> this.level.hasChunk(chunkX, chunkZ));
 		}
 	}
 

@@ -1,5 +1,6 @@
 package dev.cartographer.minimap.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.cartographer.minimap.config.ModConfig;
 import dev.cartographer.minimap.marker.QuickMarker;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -83,10 +84,13 @@ public final class FullscreenMapScreen extends Screen {
 		int mapY = MAP_TOP;
 		int mapWidth = Math.max(64, this.width - MAP_MARGIN * 2);
 		int mapHeight = Math.max(64, this.height - MAP_TOP - MAP_BOTTOM);
+		boolean highlightKnownBiomes = InputConstants.isKeyDown(this.minecraft.getWindow(), GLFW.GLFW_KEY_LEFT_ALT)
+			|| InputConstants.isKeyDown(this.minecraft.getWindow(), GLFW.GLFW_KEY_RIGHT_ALT);
 		this.viewTexture.update(
 			this.session.atlas(), this.dimension, this.centerX, this.centerZ, this.zoom, mapWidth, mapHeight,
 			false, this.config.unknownTerrain, false, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(), this.dragging,
-			this.config.showTerrainContours, this.config.terrainContourRangeChunks
+			this.config.showTerrainContours, this.config.terrainContourRangeChunks,
+			highlightKnownBiomes, this.config.biomeHighlightColor.rgb(), this.config.biomeHighlightOpacity
 		);
 		boolean viewingCurrentDimension = this.minecraft.level != null
 			&& this.dimension.equals(this.minecraft.level.dimension().identifier().toString());
@@ -103,6 +107,12 @@ public final class FullscreenMapScreen extends Screen {
 		this.drawStatusBar(graphics, mouseX, mouseY, mapX, mapY, mapWidth, mapHeight);
 		this.drawLegend(graphics, mapX, mapY, mapWidth);
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+	}
+
+	@Override
+	public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+		this.extractBlurredBackground(graphics);
+		graphics.fill(0, 0, this.width, this.height, 0x78000000);
 	}
 
 	@Override
@@ -296,6 +306,7 @@ public final class FullscreenMapScreen extends Screen {
 			Component.translatable("screen.neverket-minimap.legend.pan"),
 			Component.translatable("screen.neverket-minimap.legend.marker"),
 			Component.translatable("screen.neverket-minimap.legend.zoom"),
+			Component.translatable("screen.neverket-minimap.legend.biomes"),
 			Component.translatable("screen.neverket-minimap.legend.center"),
 			Component.translatable("screen.neverket-minimap.legend.close"),
 			Component.translatable("screen.neverket-minimap.legend.hide")

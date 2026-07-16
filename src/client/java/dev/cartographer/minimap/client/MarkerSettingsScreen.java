@@ -2,47 +2,47 @@ package dev.cartographer.minimap.client;
 
 import dev.cartographer.minimap.config.ModConfig;
 import java.util.Locale;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.AbstractButton;
+import net.minecraft.client.gui.components.AbstractSliderButton;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.options.OptionsSubScreen;
+import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
-public final class MarkerSettingsScreen extends Screen {
-	private final Screen parent;
+public final class MarkerSettingsScreen extends OptionsSubScreen {
 	private final ModConfig config;
 	private final MapMarkerRenderer markerRenderer;
 
 	public MarkerSettingsScreen(Screen parent, ModConfig config) {
-		super(Component.translatable("screen.neverket-minimap.marker_settings"));
-		this.parent = parent;
+		super(parent, Minecraft.getInstance().options, Component.translatable("screen.neverket-minimap.marker_settings"));
 		this.config = config;
-		this.markerRenderer = new MapMarkerRenderer(this.minecraft);
+		this.markerRenderer = new MapMarkerRenderer(Minecraft.getInstance());
 	}
 
 	@Override
-	protected void init() {
-		int x = this.width / 2 - 114;
-		int y = this.height / 2 - 38;
-		this.cyclingButton(x, y, "quick_marker_icon", () -> Component.translatable(
-			"value.neverket-minimap.quick_marker_icon." + this.config.quickMarkerIcon.name().toLowerCase(Locale.ROOT)
-		).getString(), () -> this.config.quickMarkerIcon = this.config.quickMarkerIcon.next());
-		this.cyclingButton(x, y + 38, "edge_banner_markers", () -> Integer.toString(this.config.maxEdgeBannerMarkers), () ->
-			this.config.maxEdgeBannerMarkers = this.config.maxEdgeBannerMarkers >= 10 ? 0 : this.config.maxEdgeBannerMarkers + 1
-		);
-		this.addRenderableWidget(
-			Button.builder(Component.translatable("gui.done"), button -> this.onClose()).bounds(x + 14, y + 70, 200, 20).build()
-		);
-	}
+	protected void addOptions() {
+		this.list.addHeader(Component.translatable("group.neverket-minimap.quick_marker"));
+		ModConfig.QuickMarkerIcon[] icons = ModConfig.QuickMarkerIcon.values();
+		for (int index = 0; index < icons.length; index += 2) {
+			IconChoiceButton left = this.iconButton(icons[index]);
+			IconChoiceButton right = index + 1 < icons.length ? this.iconButton(icons[index + 1]) : null;
+			if (right == null) {
+				this.list.addBig(left);
+			} else {
+				this.list.addSmall(left, right);
+			}
+		}
 
-	@Override
-	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-		graphics.centeredText(this.font, this.title, this.width / 2, this.height / 2 - 78, 0xFFFFFFFF);
-		graphics.text(this.font, Component.translatable("group.neverket-minimap.quick_marker"), this.width / 2 - 120, this.height / 2 - 60, 0xFFA0A0A0, false);
-		this.markerRenderer.drawQuickIcon(graphics, this.config.quickMarkerIcon, this.width / 2, this.height / 2 - 48);
-		graphics.text(this.font, Component.translatable("group.neverket-minimap.edge_markers"), this.width / 2 - 120, this.height / 2 - 10, 0xFFA0A0A0, false);
-		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+		this.list.addHeader(Component.translatable("group.neverket-minimap.edge_markers"));
+		EdgeMarkerSlider edgeMarkers = new EdgeMarkerSlider(this.config);
+		edgeMarkers.setTooltip(Tooltip.create(Component.translatable("description.neverket-minimap.edge_banner_markers")));
+		this.list.addBig(edgeMarkers);
 	}
 
 	@Override
@@ -55,30 +55,79 @@ public final class MarkerSettingsScreen extends Screen {
 	}
 
 	@Override
-	public void onClose() {
-		this.minecraft.gui.setScreen(this.parent);
+	public void removed() {
+		this.config.save();
+		super.removed();
 	}
 
 	@Override
-	public boolean isInGameUi() {
-		return true;
+	public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+		this.extractBlurredBackground(graphics);
+		graphics.fill(0, 0, this.width, this.height, 0x72000000);
 	}
 
-	private void cyclingButton(int x, int y, String key, Value value, Runnable change) {
-		Button button = Button.builder(label(key, value.get()), pressed -> {
-			change.run();
-			this.config.changed();
-			pressed.setMessage(label(key, value.get()));
-		}).bounds(x, y, 228, 20).build();
-		this.addRenderableWidget(button);
+	private IconChoiceButton iconButton(ModConfig.QuickMarkerIcon icon) {
+		IconChoiceButton button = new IconChoiceButton(icon);
+		button.setOverrideRenderHighlightedSprite(() -> this.config.quickMarkerIcon == icon);
+		button.setTooltip(Tooltip.create(Component.translatable("description.neverket-minimap.quick_marker_icon")));
+		return button;
 	}
 
-	private static Component label(String key, String value) {
-		return Component.translatable("option.neverket-minimap." + key).append(": " + value);
+	private final class IconChoiceButton extends AbstractButton {
+		private final ModConfig.QuickMarkerIcon icon;
+
+		private IconChoiceButton(ModConfig.QuickMarkerIcon icon) {
+			super(0, 0, 150, 20, Component.translatable(
+				"value.neverket-minimap.quick_marker_icon." + icon.name().toLowerCase(Locale.ROOT)
+			));
+			this.icon = icon;
+		}
+
+		@Override
+		public void onPress(InputWithModifiers input) {
+			MarkerSettingsScreen.this.config.quickMarkerIcon = this.icon;
+		}
+
+		@Override
+		protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+			MarkerSettingsScreen.this.markerRenderer.drawQuickIcon(graphics, this.icon, this.getX() + 13, this.getY() + this.getHeight() / 2);
+			graphics.centeredText(
+				MarkerSettingsScreen.this.font,
+				this.getMessage(),
+				this.getX() + this.getWidth() / 2 + 7,
+				this.getY() + (this.getHeight() - 8) / 2,
+				this.active ? 0xFFFFFFFF : 0xFFA0A0A0
+			);
+		}
+
+		@Override
+		protected void updateWidgetNarration(NarrationElementOutput output) {
+			this.defaultButtonNarrationText(output);
+		}
 	}
 
-	@FunctionalInterface
-	private interface Value {
-		String get();
+	private static final class EdgeMarkerSlider extends AbstractSliderButton {
+		private final ModConfig config;
+
+		private EdgeMarkerSlider(ModConfig config) {
+			super(0, 0, 310, 20, Component.empty(), config.maxEdgeBannerMarkers / 32.0);
+			this.config = config;
+			this.updateMessage();
+		}
+
+		@Override
+		protected void updateMessage() {
+			if (this.config != null) {
+				this.setMessage(Component.translatable("option.neverket-minimap.edge_banner_markers")
+					.append(": " + this.config.maxEdgeBannerMarkers));
+			}
+		}
+
+		@Override
+		protected void applyValue() {
+			this.config.maxEdgeBannerMarkers = Math.clamp((int)Math.round(this.value * 32.0), 0, 32);
+			this.value = this.config.maxEdgeBannerMarkers / 32.0;
+			this.updateMessage();
+		}
 	}
 }

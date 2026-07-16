@@ -93,8 +93,8 @@ public final class MapMarkerRenderer {
 	) {
 		double dx = (marker.x() - centerX) / blocksPerPixel;
 		double dz = (marker.z() - centerZ) / blocksPerPixel;
-		double halfWidth = mapWidth / 2.0 - ICON_HALF - 1;
-		double halfHeight = mapHeight / 2.0 - ICON_HALF - 1;
+		double halfWidth = mapWidth / 2.0 - 1;
+		double halfHeight = mapHeight / 2.0 - 1;
 		double screenCenterX = mapX + mapWidth / 2.0;
 		double screenCenterY = mapY + mapHeight / 2.0;
 		boolean onMap;
@@ -128,6 +128,14 @@ public final class MapMarkerRenderer {
 			identifier = Identifier.parse(assetId);
 		} catch (RuntimeException ignored) {
 			identifier = MapDecorationTypes.TARGET_POINT.value().assetId();
+		}
+		if (identifier.getNamespace().equals("neverket-minimap") && identifier.getPath().startsWith("custom/")) {
+			drawCustomIcon(graphics, identifier.getPath().substring("custom/".length()), x, y);
+			return;
+		}
+		if (identifier.getNamespace().equals("neverket-minimap") && identifier.getPath().startsWith("tinted/")) {
+			drawTintedVanillaIcon(graphics, identifier.getPath().substring("tinted/".length()), x, y);
+			return;
 		}
 		TextureAtlasSprite sprite = this.minecraft.getAtlasManager()
 			.getAtlasOrThrow(AtlasIds.MAP_DECORATIONS)
@@ -165,14 +173,77 @@ public final class MapMarkerRenderer {
 		return Component.translatable("marker.neverket-minimap.modified", time);
 	}
 
-	private static String quickMarkerAsset(ModConfig.QuickMarkerIcon icon) {
+	public static String quickMarkerAsset(ModConfig.QuickMarkerIcon icon) {
 		return switch (icon) {
 			case TARGET_POINT -> MapDecorationTypes.TARGET_POINT.value().assetId().toString();
 			case TARGET_X -> MapDecorationTypes.TARGET_X.value().assetId().toString();
 			case RED_MARKER -> MapDecorationTypes.RED_MARKER.value().assetId().toString();
 			case BLUE_MARKER -> MapDecorationTypes.BLUE_MARKER.value().assetId().toString();
 			case RED_X -> MapDecorationTypes.RED_X.value().assetId().toString();
+			case CYAN_POINT -> "neverket-minimap:tinted/cyan_point";
+			case GREEN_POINT -> "neverket-minimap:tinted/green_point";
+			case YELLOW_X -> "neverket-minimap:tinted/yellow_x";
+			case PURPLE_X -> "neverket-minimap:tinted/purple_x";
+			case GOLD_DIAMOND -> "neverket-minimap:custom/gold_diamond";
+			case WHITE_STAR -> "neverket-minimap:custom/white_star";
+			case ORANGE_FLAG -> "neverket-minimap:custom/orange_flag";
 		};
+	}
+
+	private void drawTintedVanillaIcon(GuiGraphicsExtractor graphics, String name, int x, int y) {
+		boolean cross = name.endsWith("_x");
+		Identifier asset = (cross ? MapDecorationTypes.TARGET_X : MapDecorationTypes.TARGET_POINT).value().assetId();
+		int tint = switch (name) {
+			case "cyan_point" -> 0xFF59DDE3;
+			case "green_point" -> 0xFF72D572;
+			case "yellow_x" -> 0xFFFFD75A;
+			case "purple_x" -> 0xFFC58AF9;
+			default -> 0xFFFFFFFF;
+		};
+		TextureAtlasSprite sprite = this.minecraft.getAtlasManager()
+			.getAtlasOrThrow(AtlasIds.MAP_DECORATIONS)
+			.getSprite(asset);
+		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x - ICON_HALF, y - ICON_HALF, ICON_SIZE, ICON_SIZE, tint);
+	}
+
+	private static void drawCustomIcon(GuiGraphicsExtractor graphics, String name, int centerX, int centerY) {
+		PixelIcon icon = switch (name) {
+			case "gold_diamond" -> new PixelIcon(0xFFFFCB45, 0xFFFFEE9A, 0xFF6B4B16, new String[] {
+				".........", "....D....", "...DCD...", "..DCCCD..", ".DCCACCD.",
+				"..DCCCD..", "...DCD...", "....D....", "........."
+			});
+			case "white_star" -> new PixelIcon(0xFFE8E8E8, 0xFFFFFFFF, 0xFF686868, new String[] {
+				".........", "....C....", "....C....", ".CCCCC...", "..CAC....",
+				"..CCC....", ".C...C...", ".........", "........."
+			});
+			case "orange_flag" -> new PixelIcon(0xFFF1873D, 0xFFFFC26D, 0xFF6C3820, new String[] {
+				".........", "..DCCCC..", "..DCACC..", "..DCCCC..", "..D.......",
+				"..D.......", "..D.......", ".DDD......", "........."
+			});
+			default -> null;
+		};
+		if (icon == null) {
+			return;
+		}
+		int startX = centerX - 4;
+		int startY = centerY - 4;
+		for (int row = 0; row < icon.rows().length; row++) {
+			String pixels = icon.rows()[row];
+			for (int column = 0; column < pixels.length(); column++) {
+				int color = switch (pixels.charAt(column)) {
+					case 'D' -> icon.dark();
+					case 'C' -> icon.primary();
+					case 'A' -> icon.accent();
+					default -> 0;
+				};
+				if (color != 0) {
+					graphics.fill(startX + column, startY + row, startX + column + 1, startY + row + 1, color);
+				}
+			}
+		}
+	}
+
+	private record PixelIcon(int primary, int accent, int dark, String[] rows) {
 	}
 
 	private record MarkerView(boolean quick, int x, int z, String name, String assetId, long modifiedAt) {

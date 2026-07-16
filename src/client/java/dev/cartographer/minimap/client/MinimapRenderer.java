@@ -12,7 +12,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 
 public final class MinimapRenderer implements AutoCloseable {
-	private static final int MARGIN = 8;
+	private static final int MARGIN = 10;
 
 	private final Minecraft minecraft;
 	private final WorldSession session;
@@ -37,8 +37,8 @@ public final class MinimapRenderer implements AutoCloseable {
 
 		int size = this.config.size;
 		this.resizeViewTexture(size);
-		int cardinalPadding = this.config.showCardinalDirections ? 11 : 0;
-		int bottomTextPadding = cardinalPadding + (this.config.showCoordinates ? 11 : 0);
+		int cardinalPadding = this.config.showCardinalDirections ? 7 : 0;
+		int bottomTextPadding = (this.config.showCardinalDirections ? 12 : 0) + (this.config.showCoordinates ? 14 : 0);
 		int x = switch (this.config.corner) {
 			case TOP_LEFT, BOTTOM_LEFT -> MARGIN + cardinalPadding;
 			case TOP_RIGHT, BOTTOM_RIGHT -> graphics.guiWidth() - size - MARGIN - cardinalPadding;
@@ -56,13 +56,19 @@ public final class MinimapRenderer implements AutoCloseable {
 			this.session.atlas(), dimension, playerPosition.x, playerPosition.z, this.config.zoom, size, size,
 			this.config.shape == ModConfig.Shape.CIRCLE, this.config.unknownTerrain, true,
 			this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(), false,
-			this.config.showTerrainContours, this.config.terrainContourRangeChunks
+			this.config.showTerrainContours, this.config.terrainContourRangeChunks,
+			false, 0, 0.0F
 		);
 
 		int tint = mapTint(this.minecraft, this.config, this.config.opacity);
 		this.viewTexture.blit(graphics, x, y, size, size, tint);
-		if (this.config.shape == ModConfig.Shape.SQUARE) {
-			drawBorder(graphics, x, y, size);
+		if (this.config.showMinimapBorder) {
+			int borderColor = this.config.minimapBorderColor.argb();
+			if (this.config.shape == ModConfig.Shape.SQUARE) {
+				drawBorder(graphics, x, y, size, borderColor);
+			} else {
+				drawCircularBorder(graphics, x, y, size, borderColor);
+			}
 		}
 		this.markerRenderer.render(
 			graphics, this.session.atlas(), this.config, dimension,
@@ -80,7 +86,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		}
 		if (this.config.showCoordinates) {
 			String coordinates = (int)Math.floor(playerPosition.x) + ", " + (int)Math.floor(playerPosition.z);
-			int coordinatesY = y + size + (this.config.showCardinalDirections ? 13 : 2);
+			int coordinatesY = y + size + (this.config.showCardinalDirections ? 17 : 5);
 			graphics.centeredText(this.minecraft.font, coordinates, x + size / 2, coordinatesY, 0xFFFFFFFF);
 		}
 	}
@@ -138,11 +144,30 @@ public final class MinimapRenderer implements AutoCloseable {
 		graphics.pose().popMatrix();
 	}
 
-	private static void drawBorder(GuiGraphicsExtractor graphics, int x, int y, int size) {
-		graphics.fill(x - 1, y - 1, x + size + 1, y, 0xCCFFFFFF);
-		graphics.fill(x - 1, y + size, x + size + 1, y + size + 1, 0xCCFFFFFF);
-		graphics.fill(x - 1, y, x, y + size, 0xCCFFFFFF);
-		graphics.fill(x + size, y, x + size + 1, y + size, 0xCCFFFFFF);
+	private static void drawBorder(GuiGraphicsExtractor graphics, int x, int y, int size, int color) {
+		graphics.fill(x - 1, y - 1, x + size + 1, y, color);
+		graphics.fill(x - 1, y + size, x + size + 1, y + size + 1, color);
+		graphics.fill(x - 1, y, x, y + size, color);
+		graphics.fill(x + size, y, x + size + 1, y + size, color);
+	}
+
+	private static void drawCircularBorder(GuiGraphicsExtractor graphics, int x, int y, int size, int color) {
+		double centerX = x + size / 2.0;
+		double centerY = y + size / 2.0;
+		double radius = size / 2.0;
+		int previousX = Integer.MIN_VALUE;
+		int previousY = Integer.MIN_VALUE;
+		int samples = Math.max(180, size * 4);
+		for (int sample = 0; sample < samples; sample++) {
+			double angle = Math.PI * 2.0 * sample / samples;
+			int pixelX = (int)Math.round(centerX + Math.cos(angle) * radius);
+			int pixelY = (int)Math.round(centerY + Math.sin(angle) * radius);
+			if (pixelX != previousX || pixelY != previousY) {
+				graphics.fill(pixelX, pixelY, pixelX + 1, pixelY + 1, color);
+				previousX = pixelX;
+				previousY = pixelY;
+			}
+		}
 	}
 
 	@Override
