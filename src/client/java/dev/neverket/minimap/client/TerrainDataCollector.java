@@ -22,7 +22,9 @@ public final class TerrainDataCollector {
 	private static final int MAX_RANGE_CHUNKS = 32;
 	private static final int MAX_SCAN_ATTEMPTS_PER_TICK = 512;
 	private static final int MAX_DETAILED_DISCOVERIES_PER_TICK = 8;
-	private static final long DETAILED_DISCOVERY_BUDGET_NANOS = 3_000_000L;
+	private static final int MAX_VANILLA_STRIPE_DISCOVERIES_PER_TICK = 32;
+	private static final int VANILLA_ACTIVE_RADIUS_CHUNKS = 8;
+	private static final long DETAILED_UPDATE_BUDGET_NANOS = 4_000_000L;
 	private static final int DISCOVERY_RESCAN_INTERVAL_TICKS = 40;
 	private static final int PLAYER_REFRESH_INTERVAL_TICKS = 5;
 	private static final int NEARBY_REFRESH_INTERVAL_TICKS = 3;
@@ -61,6 +63,9 @@ public final class TerrainDataCollector {
 	private int contourRange;
 	private int scanRange = -1;
 	private List<ChunkOffset> scanOffsets = List.of();
+	private List<List<ChunkOffset>> vanillaStripes = vanillaStripes(0);
+	private int vanillaStripe = -1;
+	private int vanillaStripeCursor;
 	private final ArrayDeque<ChunkUpdate> recentUpdates = new ArrayDeque<>(DEBUG_HISTORY_SIZE);
 
 	public void tick(Minecraft minecraft, MapAtlas atlas, TerrainContourCache contours, ModConfig config) {
@@ -81,6 +86,9 @@ public final class TerrainDataCollector {
 		if (rangeChanged) {
 			this.scanRange = range;
 			this.scanOffsets = radialOffsets(range);
+			this.vanillaStripes = vanillaStripes(Math.min(range, VANILLA_ACTIVE_RADIUS_CHUNKS));
+			this.vanillaStripe = -1;
+			this.vanillaStripeCursor = 0;
 		}
 		if (worldChanged || rangeChanged) {
 			this.level = level;
@@ -109,6 +117,8 @@ public final class TerrainDataCollector {
 				this.scanIndex = 0;
 				this.refreshIndex = 0;
 				this.nearbyIndex = 0;
+				this.vanillaStripe = -1;
+				this.vanillaStripeCursor = 0;
 				this.contourWarmupIndex = 0;
 				this.contourScanIndex = 0;
 				this.ticksUntilContourRescan = 0;
@@ -153,14 +163,19 @@ public final class TerrainDataCollector {
 		}
 		boolean recordsDetailedTerrain = config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN
 			|| config.mapDetailMode == ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL;
+		long detailedUpdateDeadline = System.nanoTime() + DETAILED_UPDATE_BUDGET_NANOS;
+		if (recordsDetailedTerrain && this.fillVanillaLikeStripe(
+			level, atlas, contours, config, currentDimension, playerChunkX, playerChunkZ, detailedUpdateDeadline
+		)) {
+			sampled = true;
+		}
 		int discoveryLimit = recordsDetailedTerrain ? MAX_DETAILED_DISCOVERIES_PER_TICK : 1;
 		int discoveries = 0;
-		long discoveryStartedAt = System.nanoTime();
 		for (int attempts = 0;
 			attempts < MAX_SCAN_ATTEMPTS_PER_TICK
 				&& discoveries < discoveryLimit
 				&& this.scanIndex < this.scanOffsets.size()
-				&& System.nanoTime() - discoveryStartedAt < DETAILED_DISCOVERY_BUDGET_NANOS;
+				&& System.nanoTime() < detailedUpdateDeadline;
 			this.scanIndex++, attempts++) {
 			ChunkOffset offset = this.scanOffsets.get(this.scanIndex);
 			this.currentFarRing = offset.ring();
@@ -201,6 +216,46 @@ public final class TerrainDataCollector {
 
 	public int currentFarRing() {
 		return this.currentFarRing;
+	}
+
+	/**
+	 * Mirrors the vanilla filled-map cadence: one of sixteen vertical strips is visited per tick.
+	 * Unlike vanilla, only chunks already loaded by the client are eligible.
+	 */
+	private boolean fillVanillaLikeStripe(
+		ClientLevel level,
+		MapAtlas atlas,
+		TerrainContourCache contours,
+		ModConfig config,
+		String dimension,
+		int playerChunkX,
+		int playerChunkZ,
+		long deadline
+	) {
+		if (this.vanillaStripe < 0 || this.vanillaStripeCursor >= this.vanillaStripes.get(this.vanillaStripe).size()) {
+			for (int skipped = 0; skipped < 16; skipped++) {
+				this.vanillaStripe = (this.vanillaStripe + 1) & 15;
+				this.vanillaStripeCursor = 0;
+				if (!this.vanillaStripes.get(this.vanillaStripe).isEmpty()) {
+					break;
+				}
+			}
+		}
+
+		List<ChunkOffset> stripe = this.vanillaStripes.get(this.vanillaStripe);
+		int discoveries = 0;
+		while (this.vanillaStripeCursor < stripe.size()
+			&& discoveries < MAX_VANILLA_STRIPE_DISCOVERIES_PER_TICK
+			&& System.nanoTime() < deadline) {
+			ChunkOffset offset = stripe.get(this.vanillaStripeCursor++);
+			if (this.tryRecord(
+				level, atlas, contours, config, dimension,
+				playerChunkX + offset.x(), playerChunkZ + offset.z(), UpdateKind.DISCOVERY
+			)) {
+				discoveries++;
+			}
+		}
+		return discoveries > 0;
 	}
 
 	private void warmNearbyContours(
@@ -541,6 +596,8 @@ public final class TerrainDataCollector {
 		this.lastPlayerChunkX = Integer.MIN_VALUE;
 		this.lastPlayerChunkZ = Integer.MIN_VALUE;
 		this.contourRange = 0;
+		this.vanillaStripe = -1;
+		this.vanillaStripeCursor = 0;
 		this.recentUpdates.clear();
 	}
 
@@ -557,6 +614,21 @@ public final class TerrainDataCollector {
 			.thenComparingInt(ChunkOffset::z)
 			.thenComparingInt(ChunkOffset::x));
 		return List.copyOf(offsets);
+	}
+
+	private static List<List<ChunkOffset>> vanillaStripes(int range) {
+		List<List<ChunkOffset>> stripes = new ArrayList<>(16);
+		for (int index = 0; index < 16; index++) {
+			stripes.add(new ArrayList<>());
+		}
+		for (ChunkOffset offset : radialOffsets(range)) {
+			stripes.get(Math.floorMod(offset.x(), 16)).add(offset);
+		}
+		List<List<ChunkOffset>> result = new ArrayList<>(16);
+		for (List<ChunkOffset> stripe : stripes) {
+			result.add(List.copyOf(stripe));
+		}
+		return List.copyOf(result);
 	}
 
 	private record ChunkOffset(int x, int z) {
