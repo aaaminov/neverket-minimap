@@ -56,7 +56,7 @@ public final class MinimapRenderer implements AutoCloseable {
 			this.session.atlas(), this.session.terrainContours(), dimension,
 			playerPosition.x, playerPosition.z, this.config.zoom, size, size,
 			this.config.shape == ModConfig.Shape.CIRCLE, this.config.unknownTerrain, true,
-			this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(), false,
+			this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(),
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks,
 			false, 0, 0.0F
 		);

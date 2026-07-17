@@ -30,6 +30,7 @@ public final class FullscreenMapScreen extends Screen {
 	private static final int MAP_MARGIN = 6;
 	private static final int MAP_TOP = 30;
 	private static final int MAP_BOTTOM = 6;
+	private static final int CHUNK_DEBUG_PANEL_WIDTH = 244;
 	private static final long CHUNK_DEBUG_MAX_AGE_TICKS = 100L;
 
 	private final WorldSession session;
@@ -55,8 +56,13 @@ public final class FullscreenMapScreen extends Screen {
 	private int legendY;
 	private int legendWidth;
 	private int legendHeight;
+	private int chunkDebugPanelX;
+	private int chunkDebugPanelY;
+	private int chunkDebugPanelWidth;
+	private int chunkDebugPanelHeight;
 	private boolean biomeHighlightDown;
 	private boolean chunkDebugDown;
+	private boolean chunkDebugButtonDown;
 
 	public FullscreenMapScreen(
 		WorldSession session,
@@ -80,6 +86,14 @@ public final class FullscreenMapScreen extends Screen {
 	protected void init() {
 		this.resizeViewTexture();
 		this.addRenderableWidget(
+			Button.builder(
+				Component.translatable(
+					"screen.neverket-minimap.chunk_debug_button", this.chunkDebugKey.getTranslatedKeyMessage()
+				),
+				button -> this.chunkDebugButtonDown = true
+			).bounds(this.width - 344, 5, 110, 20).build()
+		);
+		this.addRenderableWidget(
 			Button.builder(Component.translatable("screen.neverket-minimap.legend_button"), button ->
 				this.legendVisible = !this.legendVisible
 			).bounds(this.width - 230, 5, 84, 20).build()
@@ -101,11 +115,11 @@ public final class FullscreenMapScreen extends Screen {
 		int mapWidth = Math.max(64, this.width - MAP_MARGIN * 2);
 		int mapHeight = Math.max(64, this.height - MAP_TOP - MAP_BOTTOM);
 		boolean highlightKnownBiomes = this.biomeHighlightDown || this.biomeHighlightKey.isDown();
-		boolean showChunkDebug = this.chunkDebugDown || this.chunkDebugKey.isDown();
+		boolean showChunkDebug = this.chunkDebugDown || this.chunkDebugKey.isDown() || this.chunkDebugButtonDown;
 		this.viewTexture.update(
 			this.session.atlas(), this.session.terrainContours(), this.dimension,
 			this.centerX, this.centerZ, this.zoom, mapWidth, mapHeight,
-			false, this.config.unknownTerrain, false, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(), this.dragging,
+			false, this.config.unknownTerrain, false, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(),
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks,
 			highlightKnownBiomes, this.config.biomeHighlightColor.rgb(), this.config.biomeHighlightOpacity
 		);
@@ -124,7 +138,12 @@ public final class FullscreenMapScreen extends Screen {
 		this.drawPlayer(graphics, mapX, mapY, mapWidth, mapHeight, partialTick);
 		this.drawBorder(graphics, mapX, mapY, mapWidth, mapHeight);
 		this.drawStatusBar(graphics, mouseX, mouseY, mapX, mapY, mapWidth, mapHeight);
-		this.drawLegend(graphics, mapX, mapY, mapWidth);
+		if (showChunkDebug) {
+			this.legendWidth = 0;
+			this.legendHeight = 0;
+		} else {
+			this.drawLegend(graphics, mapX, mapY, mapWidth);
+		}
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 	}
 
@@ -178,7 +197,7 @@ public final class FullscreenMapScreen extends Screen {
 			this.chunkDebugDown = true;
 			return true;
 		}
-		if (event.button() == 1 && this.isInsideMap(event.x(), event.y()) && !this.isInsideLegend(event.x(), event.y())) {
+		if (event.button() == 1 && this.isInsideMap(event.x(), event.y()) && !this.isInsideMapOverlay(event.x(), event.y())) {
 			if (this.hoveredMarker != null && this.hoveredMarker.quick()) {
 				this.session.atlas().removeQuickMarker();
 				this.session.saveNow();
@@ -204,7 +223,7 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-		if (event.button() == 0 && this.isInsideMap(event.x(), event.y()) && !this.isInsideLegend(event.x(), event.y())) {
+		if (event.button() == 0 && this.isInsideMap(event.x(), event.y()) && !this.isInsideMapOverlay(event.x(), event.y())) {
 			this.dragging = true;
 			this.centerX -= dx * this.zoom;
 			this.centerZ -= dy * this.zoom;
@@ -215,6 +234,9 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public boolean mouseReleased(MouseButtonEvent event) {
+		if (event.button() == 0 && this.chunkDebugButtonDown) {
+			this.chunkDebugButtonDown = false;
+		}
 		if (this.biomeHighlightKey.matchesMouse(event)) {
 			this.biomeHighlightDown = false;
 			return true;
@@ -231,7 +253,7 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-		if (scrollY != 0 && this.isInsideMap(x, y) && !this.isInsideLegend(x, y)) {
+		if (scrollY != 0 && this.isInsideMap(x, y) && !this.isInsideMapOverlay(x, y)) {
 			int oldZoom = this.zoom;
 			int newZoom = scrollY > 0 ? Math.max(1, oldZoom / 2) : Math.min(64, oldZoom * 2);
 			if (newZoom != oldZoom) {
@@ -433,6 +455,8 @@ public final class FullscreenMapScreen extends Screen {
 		boolean visible
 	) {
 		if (!visible) {
+			this.chunkDebugPanelWidth = 0;
+			this.chunkDebugPanelHeight = 0;
 			return;
 		}
 		long gameTime = this.minecraft.level == null ? Long.MIN_VALUE : this.minecraft.level.getGameTime();
@@ -444,6 +468,8 @@ public final class FullscreenMapScreen extends Screen {
 			}
 		}
 		if (updates.isEmpty()) {
+			this.chunkDebugPanelWidth = 0;
+			this.chunkDebugPanelHeight = 0;
 			return;
 		}
 
@@ -491,9 +517,6 @@ public final class FullscreenMapScreen extends Screen {
 			.mapToLong(TerrainDataCollector.ChunkUpdate::durationNanos)
 			.max()
 			.orElse(0L) / 1_000_000.0;
-		String kind = Component.translatable(
-			"value.neverket-minimap.chunk_update_kind." + latest.kind().name().toLowerCase(Locale.ROOT)
-		).getString();
 		String duration = String.format(Locale.ROOT, "%.2f", latest.durationNanos() / 1_000_000.0);
 		String averageDuration = String.format(Locale.ROOT, "%.2f", averageDurationMillis);
 		String maximumDuration = String.format(Locale.ROOT, "%.2f", maximumDurationMillis);
@@ -510,29 +533,30 @@ public final class FullscreenMapScreen extends Screen {
 				"screen.neverket-minimap.chunk_debug.far_ring", this.session.currentTerrainUpdateRing(), range
 			).getString(),
 			Component.translatable(
-				"screen.neverket-minimap.chunk_debug.latest", kind, latest.chunkX(), latest.chunkZ()
+				"screen.neverket-minimap.chunk_debug.latest", latest.chunkX(), latest.chunkZ()
 			).getString(),
 			Component.translatable("screen.neverket-minimap.chunk_debug.scan_latest", duration).getString(),
 			Component.translatable(
 				"screen.neverket-minimap.chunk_debug.scan_summary", averageDuration, maximumDuration
 			).getString(),
-			Component.translatable("screen.neverket-minimap.chunk_debug.texture", textureDuration).getString(),
-			Component.translatable("screen.neverket-minimap.chunk_debug.history", updates.size()).getString()
+			Component.translatable("screen.neverket-minimap.chunk_debug.texture", textureDuration).getString()
 		};
-		int maxTextWidth = Math.max(40, mapWidth - 28);
-		int textWidth = 0;
+		int panelWidth = Math.max(52, Math.min(CHUNK_DEBUG_PANEL_WIDTH, mapWidth - 12));
+		int maxTextWidth = Math.max(40, panelWidth - 12);
 		for (int index = 0; index < lines.length; index++) {
 			if (this.font.width(lines[index]) > maxTextWidth) {
 				lines[index] = this.font.plainSubstrByWidth(
 					lines[index], Math.max(20, maxTextWidth - this.font.width("..."))
 				) + "...";
 			}
-			textWidth = Math.max(textWidth, this.font.width(lines[index]));
 		}
-		int panelWidth = textWidth + 12;
 		int panelHeight = lines.length * 11 + 9;
-		int panelX = mapX + mapWidth - panelWidth - 6;
+		int panelX = mapX + 6;
 		int panelY = mapY + 6;
+		this.chunkDebugPanelX = panelX;
+		this.chunkDebugPanelY = panelY;
+		this.chunkDebugPanelWidth = panelWidth;
+		this.chunkDebugPanelHeight = panelHeight;
 		graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xC0101216);
 		for (int index = 0; index < lines.length; index++) {
 			graphics.text(
@@ -642,9 +666,14 @@ public final class FullscreenMapScreen extends Screen {
 		return x >= MAP_MARGIN && x < this.width - MAP_MARGIN && y >= MAP_TOP && y < this.height - MAP_BOTTOM;
 	}
 
-	private boolean isInsideLegend(double x, double y) {
-		return this.legendVisible && x >= this.legendX && x < this.legendX + this.legendWidth
+	private boolean isInsideMapOverlay(double x, double y) {
+		boolean insideLegend = this.legendVisible && this.legendWidth > 0
+			&& x >= this.legendX && x < this.legendX + this.legendWidth
 			&& y >= this.legendY && y < this.legendY + this.legendHeight;
+		boolean insideDebug = this.chunkDebugPanelWidth > 0
+			&& x >= this.chunkDebugPanelX && x < this.chunkDebugPanelX + this.chunkDebugPanelWidth
+			&& y >= this.chunkDebugPanelY && y < this.chunkDebugPanelY + this.chunkDebugPanelHeight;
+		return insideLegend || insideDebug;
 	}
 
 	private int worldXAt(double screenX) {

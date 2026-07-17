@@ -14,7 +14,8 @@ import net.minecraft.world.level.material.MapColor;
 
 public final class MapViewTexture implements AutoCloseable {
 	private static final int DEFAULT_OVERSCAN = 4;
-	private static final long CONTENT_REFRESH_INTERVAL_NANOS = 500_000_000L;
+	private static final long MINIMAP_REFRESH_INTERVAL_NANOS = 100_000_000L;
+	private static final long FULLSCREEN_REFRESH_INTERVAL_NANOS = 350_000_000L;
 	private static final int NO_HEIGHT = Integer.MIN_VALUE;
 	private static final byte LAND = 1;
 	private static final byte WATER = 2;
@@ -88,7 +89,6 @@ public final class MapViewTexture implements AutoCloseable {
 		boolean dimTransparentUnknown,
 		boolean includeDetailedTerrain,
 		boolean detailedTerrainRequiresMapCoverage,
-		boolean deferContentUpdates,
 		boolean showTerrainContours,
 		int terrainContourRangeChunks,
 		boolean highlightKnownBiomes,
@@ -136,7 +136,10 @@ public final class MapViewTexture implements AutoCloseable {
 				&& biomeHighlightRefresh == this.lastBiomeHighlightRefresh
 				&& atlas.version() == this.lastAtlasVersion;
 			long elapsed = System.nanoTime() - this.lastUploadNanos;
-			if (deferContentUpdates || contentUnchanged || (sameAtlas && elapsed < CONTENT_REFRESH_INTERVAL_NANOS)) {
+			long refreshInterval = this.viewWidth <= 320
+				? MINIMAP_REFRESH_INTERVAL_NANOS
+				: FULLSCREEN_REFRESH_INTERVAL_NANOS;
+			if (contentUnchanged || (sameAtlas && elapsed < refreshInterval)) {
 				return;
 			}
 		}
