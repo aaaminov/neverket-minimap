@@ -9,7 +9,7 @@
   "environment": "client",
   "entrypoints": {
     "client": [
-      "dev.cartographer.minimap.CartographerMinimapClient"
+      "dev.neverket.minimap.NeverketMinimapClient"
     ]
   },
   "depends": {

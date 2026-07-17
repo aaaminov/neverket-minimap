@@ -7,9 +7,32 @@ def buildNumberProperties = new Properties()
 if (buildNumberFile.isFile()) {
 	buildNumberFile.withInputStream { buildNumberProperties.load(it) }
 }
-def nextBuildNumber = Integer.parseInt(buildNumberProperties.getProperty("build_number", "0")) + 1
+def versionMajor = Integer.parseInt(buildNumberProperties.getProperty("version_major", "1"))
+def versionMinor = Integer.parseInt(buildNumberProperties.getProperty("version_minor", "0"))
+def lastVersionMajor = Integer.parseInt(buildNumberProperties.getProperty("last_version_major", versionMajor.toString()))
+def lastVersionMinor = Integer.parseInt(buildNumberProperties.getProperty("last_version_minor", versionMinor.toString()))
+def majorChanged = versionMajor != lastVersionMajor
+if (majorChanged) {
+	versionMinor = 0
+}
+def minorChanged = majorChanged || versionMinor != lastVersionMinor
+def storedBuildNumber = Integer.parseInt(buildNumberProperties.getProperty("build_number", "-1"))
+def versionedInputs = files(
+	fileTree("src"),
+	file("build.gradle"),
+	file("gradle.properties"),
+	file("settings.gradle")
+)
+def buildDigest = java.security.MessageDigest.getInstance("SHA-256")
+versionedInputs.files.findAll { it.isFile() }.sort { it.absolutePath }.each { input ->
+	buildDigest.update(project.relativePath(input).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+	buildDigest.update(java.nio.file.Files.readAllBytes(input.toPath()))
+}
+def currentBuildHash = java.util.HexFormat.of().formatHex(buildDigest.digest())
+def sourceChanged = currentBuildHash != buildNumberProperties.getProperty("last_build_hash", "")
+def nextBuildNumber = minorChanged ? 0 : (sourceChanged ? storedBuildNumber + 1 : storedBuildNumber)
 
-version = "${project.mod_version}.${nextBuildNumber}"
+version = "${versionMajor}.${versionMinor}.${nextBuildNumber}"
 group = project.maven_group
 
 base {
@@ -44,18 +67,25 @@ processResources {
 	}
 }
 
-tasks.register("incrementBuildNumber") {
-	description = "Increments the patch component used by the next produced JAR."
+tasks.register("updateBuildVersion") {
+	description = "Updates the patch component only when versioned build inputs have changed."
 	group = "build"
 	outputs.file(buildNumberFile)
 	outputs.upToDateWhen { false }
 	doLast {
-		buildNumberFile.text = "build_number=${nextBuildNumber}${System.lineSeparator()}"
+		buildNumberFile.text = [
+			"version_major=${versionMajor}",
+			"version_minor=${versionMinor}",
+			"build_number=${nextBuildNumber}",
+			"last_version_major=${versionMajor}",
+			"last_version_minor=${versionMinor}",
+			"last_build_hash=${currentBuildHash}"
+		].join(System.lineSeparator()) + System.lineSeparator()
 	}
 }
 
 tasks.named("jar") {
-	dependsOn tasks.named("incrementBuildNumber")
+	dependsOn tasks.named("updateBuildVersion")
 }
 
 tasks.withType(JavaCompile).configureEach {
