@@ -105,6 +105,28 @@ class MapAtlasTest {
 	}
 
 	@Test
+	void replacesPreviouslyRecordedTerrainIncludingUnknownPixels() {
+		MapAtlas atlas = new MapAtlas();
+		byte[] initial = new byte[16 * 16];
+		initial[0] = 28;
+		initial[1] = 32;
+		assertTrue(atlas.putTerrainChunk("minecraft:overworld", 0, 0, initial));
+		long initialVersion = atlas.version();
+
+		byte[] updated = initial.clone();
+		updated[0] = 40;
+		updated[1] = 0;
+		assertTrue(atlas.putTerrainChunk("minecraft:overworld", 0, 0, updated));
+		assertEquals(initialVersion + 1, atlas.version());
+		assertEquals(40, atlas.colorAt("minecraft:overworld", 0, 0));
+		assertEquals(0, atlas.colorAt("minecraft:overworld", 1, 0));
+
+		long updatedVersion = atlas.version();
+		assertFalse(atlas.putTerrainChunk("minecraft:overworld", 0, 0, updated));
+		assertEquals(updatedVersion, atlas.version());
+	}
+
+	@Test
 	void cachedSamplerMatchesAtlasLayers() {
 		MapAtlas atlas = new MapAtlas();
 		atlas.put(solidMap(1, "minecraft:overworld", 0, 0, (byte)0, (byte)4));

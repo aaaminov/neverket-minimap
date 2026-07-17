@@ -100,6 +100,11 @@ public final class SettingsScreen extends OptionsSubScreen {
 			this.intSlider("biome_highlight_opacity", Math.round(this.config.biomeHighlightOpacity * 100.0F), 5, 100, 5,
 				value -> this.config.biomeHighlightOpacity = value / 100.0F, value -> value + "%")
 		);
+		this.list.addSmall(
+			this.toggleButton("cursor_biome", () -> this.config.showCursorBiome, value -> this.config.showCursorBiome = value),
+			this.toggleButton("recording_area_border", () -> this.config.showRecordingAreaOnBiomeHighlight,
+				value -> this.config.showRecordingAreaOnBiomeHighlight = value)
+		);
 
 		this.list.addHeader(Component.translatable("group.neverket-minimap.markers"));
 		this.list.addBig(this.navigationButton());

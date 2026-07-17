@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -93,47 +94,93 @@ public final class AtlasStorage {
 	}
 
 	public void save(String worldKey, MapAtlas atlas) throws IOException {
+		this.save(this.snapshot(worldKey, atlas));
+	}
+
+	public SaveSnapshot snapshot(String worldKey, MapAtlas atlas) {
+		return new SaveSnapshot(
+			worldKey,
+			List.copyOf(atlas.snapshots()),
+			List.copyOf(atlas.terrainTiles()),
+			List.copyOf(atlas.terrainChunks()),
+			atlas.quickMarker(),
+			List.copyOf(atlas.bannerMarkers()),
+			List.copyOf(atlas.biomeChunks())
+		);
+	}
+
+	public void save(SaveSnapshot snapshot) throws IOException {
 		Files.createDirectories(this.directory);
 		List<StoredMap> maps = new ArrayList<>();
-		for (MapSnapshot snapshot : atlas.snapshots()) {
-			maps.add(new StoredMap(snapshot.id(), snapshot.dimension(), snapshot.centerX(), snapshot.centerZ(), snapshot.scale(), Base64.getEncoder().encodeToString(snapshot.colors())));
+		for (MapSnapshot map : snapshot.maps) {
+			maps.add(new StoredMap(map.id(), map.dimension(), map.centerX(), map.centerZ(), map.scale(), Base64.getEncoder().encodeToString(map.colors())));
 		}
 		List<StoredTerrainTile> terrain = new ArrayList<>();
-		for (TerrainTile tile : atlas.terrainTiles()) {
+		for (TerrainTile tile : snapshot.terrain) {
 			terrain.add(new StoredTerrainTile(
 				tile.dimension(), tile.tileX(), tile.tileZ(), Base64.getEncoder().encodeToString(tile.colors())
 			));
 		}
 		List<StoredTerrainChunk> terrainChunks = new ArrayList<>();
-		for (MapAtlas.TerrainChunk chunk : atlas.terrainChunks()) {
+		for (MapAtlas.TerrainChunk chunk : snapshot.terrainChunks) {
 			terrainChunks.add(new StoredTerrainChunk(chunk.dimension(), chunk.chunkX(), chunk.chunkZ()));
 		}
-		StoredQuickMarker quickMarker = atlas.quickMarker()
+		StoredQuickMarker quickMarker = snapshot.quickMarker
 			.map(marker -> new StoredQuickMarker(marker.dimension(), marker.x(), marker.z(), "", marker.modifiedAt()))
 			.orElse(null);
 		List<StoredBannerMarker> bannerMarkers = new ArrayList<>();
-		for (BannerMarker marker : atlas.bannerMarkers()) {
+		for (BannerMarker marker : snapshot.bannerMarkers) {
 			bannerMarkers.add(new StoredBannerMarker(
 				marker.sourceMapId(), marker.dimension(), marker.x(), marker.z(), marker.name(), marker.assetId(), marker.modifiedAt()
 			));
 		}
 		List<StoredBiomeChunk> biomeChunks = new ArrayList<>();
-		for (MapAtlas.BiomeChunk chunk : atlas.biomeChunks()) {
+		for (MapAtlas.BiomeChunk chunk : snapshot.biomeChunks) {
 			biomeChunks.add(new StoredBiomeChunk(chunk.dimension(), chunk.chunkX(), chunk.chunkZ(), chunk.biomes()));
 		}
 
-		Path target = this.fileFor(worldKey);
+		Path target = this.fileFor(snapshot.worldKey);
 		Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
 		try (Writer writer = new OutputStreamWriter(
 			new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(temporary))), StandardCharsets.UTF_8
 		)) {
-			GSON.toJson(new StoredAtlas(FORMAT_VERSION, worldKey, maps, terrain, terrainChunks, quickMarker, bannerMarkers, biomeChunks), writer);
+			GSON.toJson(new StoredAtlas(
+				FORMAT_VERSION, snapshot.worldKey, maps, terrain, terrainChunks, quickMarker, bannerMarkers, biomeChunks
+			), writer);
 		}
 
 		try {
 			Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
 		} catch (AtomicMoveNotSupportedException ignored) {
 			Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+		}
+	}
+
+	public static final class SaveSnapshot {
+		private final String worldKey;
+		private final List<MapSnapshot> maps;
+		private final List<TerrainTile> terrain;
+		private final List<MapAtlas.TerrainChunk> terrainChunks;
+		private final Optional<QuickMarker> quickMarker;
+		private final List<BannerMarker> bannerMarkers;
+		private final List<MapAtlas.BiomeChunk> biomeChunks;
+
+		private SaveSnapshot(
+			String worldKey,
+			List<MapSnapshot> maps,
+			List<TerrainTile> terrain,
+			List<MapAtlas.TerrainChunk> terrainChunks,
+			Optional<QuickMarker> quickMarker,
+			List<BannerMarker> bannerMarkers,
+			List<MapAtlas.BiomeChunk> biomeChunks
+		) {
+			this.worldKey = worldKey;
+			this.maps = maps;
+			this.terrain = terrain;
+			this.terrainChunks = terrainChunks;
+			this.quickMarker = quickMarker;
+			this.bannerMarkers = bannerMarkers;
+			this.biomeChunks = biomeChunks;
 		}
 	}
 

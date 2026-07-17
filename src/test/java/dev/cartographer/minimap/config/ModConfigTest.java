@@ -26,6 +26,7 @@ class ModConfigTest {
 		assertEquals(5, config.maxEdgeBannerMarkers);
 		assertEquals(ModConfig.BiomeHighlightColor.CYAN, config.biomeHighlightColor);
 		assertEquals(0.35F, config.biomeHighlightOpacity);
+		assertTrue(config.showRecordingAreaOnBiomeHighlight);
 	}
 
 	@Test

@@ -45,6 +45,7 @@ public final class MapViewTexture implements AutoCloseable {
 	private boolean lastDimTransparentUnknown;
 	private boolean lastIncludeDetailedTerrain;
 	private boolean lastDetailedTerrainRequiresMapCoverage;
+	private MapAtlas lastAtlas;
 	private long lastAtlasVersion = Long.MIN_VALUE;
 	private boolean lastTerrainContours;
 	private int lastTerrainContourRange;
@@ -54,6 +55,9 @@ public final class MapViewTexture implements AutoCloseable {
 	private float lastBiomeHighlightOpacity;
 	private long lastBiomeHighlightRefresh = Long.MIN_VALUE;
 	private long lastUploadNanos = Long.MIN_VALUE;
+	private int[] terrainHeightBuffer;
+	private byte[] terrainKindBuffer;
+	private byte[] terrainFadeBuffer;
 	private float sourceU;
 	private float sourceV;
 
@@ -129,11 +133,13 @@ public final class MapViewTexture implements AutoCloseable {
 			&& biomeHighlightColor == this.lastBiomeHighlightColor
 			&& biomeHighlightOpacity == this.lastBiomeHighlightOpacity;
 		if (geometryUnchanged) {
-			boolean contentUnchanged = terrainRefresh == this.lastTerrainRefresh
+			boolean sameAtlas = atlas == this.lastAtlas;
+			boolean contentUnchanged = sameAtlas
+				&& terrainRefresh == this.lastTerrainRefresh
 				&& biomeHighlightRefresh == this.lastBiomeHighlightRefresh
 				&& atlas.version() == this.lastAtlasVersion;
 			long elapsed = System.nanoTime() - this.lastUploadNanos;
-			if (deferContentUpdates || contentUnchanged || elapsed < CONTENT_REFRESH_INTERVAL_NANOS) {
+			if (deferContentUpdates || contentUnchanged || (sameAtlas && elapsed < CONTENT_REFRESH_INTERVAL_NANOS)) {
 				return;
 			}
 		}
@@ -142,9 +148,10 @@ public final class MapViewTexture implements AutoCloseable {
 		double radiusSquared = radius * radius;
 		int unknownColor = unknown == UnknownTerrain.DARK ? 0xFF101216 : dimTransparentUnknown ? 0x50101216 : 0;
 		int pixelCount = this.textureWidth * this.textureHeight;
-		int[] terrainHeights = terrainContours ? new int[pixelCount] : null;
-		byte[] terrainKinds = terrainContours ? new byte[pixelCount] : null;
-		byte[] terrainFade = terrainContours ? new byte[pixelCount] : null;
+		this.ensureTerrainBuffers(terrainContours ? pixelCount : 0);
+		int[] terrainHeights = terrainContours ? this.terrainHeightBuffer : null;
+		byte[] terrainKinds = terrainContours ? this.terrainKindBuffer : null;
+		byte[] terrainFade = terrainContours ? this.terrainFadeBuffer : null;
 		MapAtlas.ColorSampler colorSampler = atlas.sampler(
 			dimension, includeDetailedTerrain, detailedTerrainRequiresMapCoverage
 		);
@@ -152,6 +159,8 @@ public final class MapViewTexture implements AutoCloseable {
 		MapAtlas.BiomeSampler biomeSampler = biomeHighlight ? atlas.biomeSampler(dimension) : null;
 		if (terrainHeights != null) {
 			Arrays.fill(terrainHeights, NO_HEIGHT);
+			Arrays.fill(terrainKinds, (byte)0);
+			Arrays.fill(terrainFade, (byte)0);
 		}
 
 		for (int y = 0; y < this.textureHeight; y++) {
@@ -205,6 +214,7 @@ public final class MapViewTexture implements AutoCloseable {
 		this.lastDimTransparentUnknown = dimTransparentUnknown;
 		this.lastIncludeDetailedTerrain = includeDetailedTerrain;
 		this.lastDetailedTerrainRequiresMapCoverage = detailedTerrainRequiresMapCoverage;
+		this.lastAtlas = atlas;
 		this.lastTerrainContours = terrainContours;
 		this.lastTerrainContourRange = effectiveContourRange;
 		this.lastTerrainRefresh = terrainRefresh;
@@ -214,6 +224,15 @@ public final class MapViewTexture implements AutoCloseable {
 		this.lastBiomeHighlightRefresh = biomeHighlightRefresh;
 		this.lastAtlasVersion = atlas.version();
 		this.lastUploadNanos = System.nanoTime();
+	}
+
+	private void ensureTerrainBuffers(int requiredSize) {
+		if (requiredSize <= 0 || (this.terrainHeightBuffer != null && this.terrainHeightBuffer.length == requiredSize)) {
+			return;
+		}
+		this.terrainHeightBuffer = new int[requiredSize];
+		this.terrainKindBuffer = new byte[requiredSize];
+		this.terrainFadeBuffer = new byte[requiredSize];
 	}
 
 	public void blit(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int color) {

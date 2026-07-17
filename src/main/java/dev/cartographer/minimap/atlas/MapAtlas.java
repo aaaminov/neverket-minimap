@@ -110,7 +110,7 @@ public final class MapAtlas {
 			for (int x = 0; x < 16; x++) {
 				byte color = colors[x + z * 16];
 				int tileIndex = startX + x + (startZ + z) * TerrainTile.SIDE;
-				if (color != 0 && tile[tileIndex] != color) {
+				if (tile[tileIndex] != color) {
 					tile[tileIndex] = color;
 					changed = true;
 				}

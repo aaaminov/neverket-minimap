@@ -36,6 +36,7 @@ public final class ModConfig {
 	public int maxEdgeBannerMarkers = 5;
 	public BiomeHighlightColor biomeHighlightColor = BiomeHighlightColor.CYAN;
 	public float biomeHighlightOpacity = 0.35F;
+	public boolean showRecordingAreaOnBiomeHighlight = true;
 
 	private transient Path path;
 	private transient long revision;

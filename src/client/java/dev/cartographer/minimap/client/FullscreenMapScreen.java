@@ -99,6 +99,7 @@ public final class FullscreenMapScreen extends Screen {
 		int mapTint = viewingCurrentDimension ? MinimapRenderer.mapTint(this.minecraft, this.config, 1.0F) : 0xFFFFFFFF;
 		this.viewTexture.blit(graphics, mapX, mapY, mapWidth, mapHeight, mapTint);
 		this.drawGrid(graphics, mapX, mapY, mapWidth, mapHeight);
+		this.drawRecordingAreaBorder(graphics, mapX, mapY, mapWidth, mapHeight, highlightKnownBiomes);
 		this.hoveredMarker = this.markerRenderer.render(
 			graphics, this.session.atlas(), this.config, this.dimension,
 			this.centerX, this.centerZ, this.zoom,
@@ -314,9 +315,57 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	private boolean biomeVisibleAt(int worldX, int worldZ) {
-		return this.config.recordingMode == ModConfig.RecordingMode.MAPS
+		return this.config.showCursorBiome && (this.config.recordingMode == ModConfig.RecordingMode.MAPS
 			? this.session.atlas().colorAt(this.dimension, worldX, worldZ, false) != 0
-			: this.session.atlas().colorAt(this.dimension, worldX, worldZ, true) != 0;
+			: this.session.atlas().colorAt(this.dimension, worldX, worldZ, true) != 0);
+	}
+
+	private void drawRecordingAreaBorder(
+		GuiGraphicsExtractor graphics,
+		int mapX,
+		int mapY,
+		int mapWidth,
+		int mapHeight,
+		boolean highlightKnownBiomes
+	) {
+		if (!highlightKnownBiomes || !this.config.showRecordingAreaOnBiomeHighlight
+			|| this.minecraft.player == null || this.minecraft.level == null
+			|| !this.dimension.equals(this.minecraft.level.dimension().identifier().toString())) {
+			return;
+		}
+		int playerChunkX = Math.floorDiv((int)Math.floor(this.minecraft.player.getX()), 16);
+		int playerChunkZ = Math.floorDiv((int)Math.floor(this.minecraft.player.getZ()), 16);
+		int range = TerrainDataCollector.recordingRangeChunks(this.minecraft);
+		double minWorldX = (playerChunkX - range) * 16.0;
+		double maxWorldX = (playerChunkX + range + 1) * 16.0;
+		double minWorldZ = (playerChunkZ - range) * 16.0;
+		double maxWorldZ = (playerChunkZ + range + 1) * 16.0;
+		int left = (int)Math.round(mapX + mapWidth / 2.0 + (minWorldX - this.centerX) / this.zoom);
+		int right = (int)Math.round(mapX + mapWidth / 2.0 + (maxWorldX - this.centerX) / this.zoom);
+		int top = (int)Math.round(mapY + mapHeight / 2.0 + (minWorldZ - this.centerZ) / this.zoom);
+		int bottom = (int)Math.round(mapY + mapHeight / 2.0 + (maxWorldZ - this.centerZ) / this.zoom);
+		int clippedLeft = Math.clamp(left, mapX, mapX + mapWidth);
+		int clippedRight = Math.clamp(right, mapX, mapX + mapWidth);
+		int clippedTop = Math.clamp(top, mapY, mapY + mapHeight);
+		int clippedBottom = Math.clamp(bottom, mapY, mapY + mapHeight);
+		int color = 0xD0000000 | this.config.biomeHighlightColor.rgb();
+		boolean horizontalOverlap = right >= mapX && left <= mapX + mapWidth;
+		boolean verticalOverlap = bottom >= mapY && top <= mapY + mapHeight;
+
+		graphics.enableScissor(mapX, mapY, mapX + mapWidth, mapY + mapHeight);
+		if (horizontalOverlap && top >= mapY && top < mapY + mapHeight) {
+			graphics.fill(clippedLeft, top, clippedRight + 1, top + 1, color);
+		}
+		if (horizontalOverlap && bottom >= mapY && bottom < mapY + mapHeight) {
+			graphics.fill(clippedLeft, bottom, clippedRight + 1, bottom + 1, color);
+		}
+		if (verticalOverlap && left >= mapX && left < mapX + mapWidth) {
+			graphics.fill(left, clippedTop, left + 1, clippedBottom + 1, color);
+		}
+		if (verticalOverlap && right >= mapX && right < mapX + mapWidth) {
+			graphics.fill(right, clippedTop, right + 1, clippedBottom + 1, color);
+		}
+		graphics.disableScissor();
 	}
 
 	private void drawLegend(GuiGraphicsExtractor graphics, int mapX, int mapY, int mapWidth) {

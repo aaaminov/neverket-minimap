@@ -18,15 +18,19 @@ import net.minecraft.world.level.material.MapColor;
 /** Incrementally records surface colors and biome quart samples from chunks already loaded by the client. */
 public final class TerrainDataCollector {
 	private static final int MAX_RANGE_CHUNKS = 32;
-	private static final int MIN_BACKGROUND_CHUNKS_PER_TICK = 2;
-	private static final int MAX_BACKGROUND_CHUNKS_PER_TICK = 16;
 	private static final int MAX_SCAN_ATTEMPTS_PER_TICK = 128;
-	private static final long SCAN_TIME_BUDGET_NANOS = 2_000_000L;
+	private static final int DISCOVERY_RESCAN_INTERVAL_TICKS = 20;
+	private static final int PLAYER_REFRESH_INTERVAL_TICKS = 10;
+	private static final int BACKGROUND_REFRESH_INTERVAL_TICKS = 4;
+	private static final int MAX_REFRESH_ATTEMPTS_PER_TICK = 64;
 
+	private ClientLevel level;
 	private String dimension;
-	private int scanOriginX;
-	private int scanOriginZ;
 	private int scanIndex;
+	private int refreshIndex;
+	private int ticksUntilDiscoveryRescan;
+	private int ticksUntilPlayerRefresh;
+	private int ticksUntilBackgroundRefresh;
 	private int scanRange = -1;
 	private List<ChunkOffset> scanOffsets = List.of();
 
@@ -39,33 +43,81 @@ public final class TerrainDataCollector {
 		String currentDimension = level.dimension().identifier().toString();
 		int playerChunkX = Math.floorDiv((int)Math.floor(minecraft.player.getX()), 16);
 		int playerChunkZ = Math.floorDiv((int)Math.floor(minecraft.player.getZ()), 16);
-		int range = Math.min(minecraft.options.getEffectiveRenderDistance(), MAX_RANGE_CHUNKS);
-		if (range != this.scanRange) {
+		int range = recordingRangeChunks(minecraft);
+		boolean rangeChanged = range != this.scanRange;
+		if (rangeChanged) {
 			this.scanRange = range;
 			this.scanOffsets = radialOffsets(range);
 		}
-		if (!currentDimension.equals(this.dimension) || this.scanIndex >= this.scanOffsets.size()
-			|| Math.abs(playerChunkX - this.scanOriginX) > 2
-			|| Math.abs(playerChunkZ - this.scanOriginZ) > 2) {
+		if (level != this.level || rangeChanged || !currentDimension.equals(this.dimension)) {
+			this.level = level;
 			this.dimension = currentDimension;
-			this.scanOriginX = playerChunkX;
-			this.scanOriginZ = playerChunkZ;
 			this.scanIndex = 0;
+			this.refreshIndex = 0;
+			this.ticksUntilDiscoveryRescan = 0;
+			this.ticksUntilPlayerRefresh = PLAYER_REFRESH_INTERVAL_TICKS;
+			this.ticksUntilBackgroundRefresh = BACKGROUND_REFRESH_INTERVAL_TICKS;
 		}
 
-		this.tryRecord(level, atlas, config, currentDimension, playerChunkX, playerChunkZ);
-		long scanDeadline = System.nanoTime() + SCAN_TIME_BUDGET_NANOS;
-		for (int recorded = 0, attempts = 0;
-			recorded < MAX_BACKGROUND_CHUNKS_PER_TICK
-				&& attempts < MAX_SCAN_ATTEMPTS_PER_TICK
-				&& this.scanIndex < this.scanOffsets.size()
-				&& (recorded < MIN_BACKGROUND_CHUNKS_PER_TICK || System.nanoTime() < scanDeadline);
+		if (this.scanIndex >= this.scanOffsets.size()) {
+			if (this.ticksUntilDiscoveryRescan > 0) {
+				this.ticksUntilDiscoveryRescan--;
+			} else {
+				this.scanIndex = 0;
+			}
+		}
+		boolean discoverySweepActive = this.scanIndex < this.scanOffsets.size();
+		boolean sampled = this.tryRecord(level, atlas, config, currentDimension, playerChunkX, playerChunkZ, false);
+		if (this.ticksUntilPlayerRefresh > 0) {
+			this.ticksUntilPlayerRefresh--;
+		}
+		if (!sampled && this.ticksUntilPlayerRefresh <= 0) {
+			this.ticksUntilPlayerRefresh = PLAYER_REFRESH_INTERVAL_TICKS;
+			sampled = this.tryRecord(level, atlas, config, currentDimension, playerChunkX, playerChunkZ, true);
+		}
+		for (int attempts = 0;
+			!sampled && attempts < MAX_SCAN_ATTEMPTS_PER_TICK && this.scanIndex < this.scanOffsets.size();
 			this.scanIndex++, attempts++) {
 			ChunkOffset offset = this.scanOffsets.get(this.scanIndex);
-			int chunkX = this.scanOriginX + offset.x();
-			int chunkZ = this.scanOriginZ + offset.z();
-			if (this.tryRecord(level, atlas, config, currentDimension, chunkX, chunkZ)) {
-				recorded++;
+			int chunkX = playerChunkX + offset.x();
+			int chunkZ = playerChunkZ + offset.z();
+			sampled = this.tryRecord(level, atlas, config, currentDimension, chunkX, chunkZ, false);
+		}
+		if (discoverySweepActive && this.scanIndex >= this.scanOffsets.size()) {
+			this.ticksUntilDiscoveryRescan = DISCOVERY_RESCAN_INTERVAL_TICKS;
+		}
+
+		if (this.ticksUntilBackgroundRefresh > 0) {
+			this.ticksUntilBackgroundRefresh--;
+		}
+		if (!sampled && this.ticksUntilBackgroundRefresh <= 0) {
+			this.ticksUntilBackgroundRefresh = BACKGROUND_REFRESH_INTERVAL_TICKS;
+			this.refreshNextLoadedChunk(level, atlas, config, currentDimension, playerChunkX, playerChunkZ);
+		}
+	}
+
+	static int recordingRangeChunks(Minecraft minecraft) {
+		return Math.min(minecraft.options.getEffectiveRenderDistance(), MAX_RANGE_CHUNKS);
+	}
+
+	private void refreshNextLoadedChunk(
+		ClientLevel level,
+		MapAtlas atlas,
+		ModConfig config,
+		String dimension,
+		int playerChunkX,
+		int playerChunkZ
+	) {
+		for (int attempts = 0; attempts < MAX_REFRESH_ATTEMPTS_PER_TICK; attempts++) {
+			ChunkOffset offset = this.scanOffsets.get(this.refreshIndex);
+			this.refreshIndex = (this.refreshIndex + 1) % this.scanOffsets.size();
+			int chunkX = playerChunkX + offset.x();
+			int chunkZ = playerChunkZ + offset.z();
+			if (chunkX == playerChunkX && chunkZ == playerChunkZ) {
+				continue;
+			}
+			if (this.tryRecord(level, atlas, config, dimension, chunkX, chunkZ, true)) {
+				return;
 			}
 		}
 	}
@@ -76,15 +128,21 @@ public final class TerrainDataCollector {
 		ModConfig config,
 		String dimension,
 		int chunkX,
-		int chunkZ
+		int chunkZ,
+		boolean refreshExisting
 	) {
 		if (config.recordingMode == ModConfig.RecordingMode.MAPS && !atlas.hasMapCoverage(dimension, chunkX, chunkZ)) {
 			return false;
 		}
 		boolean recordTerrain = config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN
 			|| config.mapDetailMode == ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL;
-		boolean needsTerrain = recordTerrain && !atlas.hasTerrainChunk(dimension, chunkX, chunkZ);
-		boolean needsBiomes = !atlas.hasBiomeChunk(dimension, chunkX, chunkZ);
+		boolean hasTerrain = atlas.hasTerrainChunk(dimension, chunkX, chunkZ);
+		boolean hasBiomes = atlas.hasBiomeChunk(dimension, chunkX, chunkZ);
+		if (refreshExisting && !(recordTerrain && hasTerrain) && !hasBiomes) {
+			return false;
+		}
+		boolean needsTerrain = recordTerrain && (refreshExisting || !hasTerrain);
+		boolean needsBiomes = refreshExisting || !hasBiomes;
 		if (!needsTerrain && !needsBiomes) {
 			return false;
 		}
@@ -210,8 +268,13 @@ public final class TerrainDataCollector {
 	}
 
 	private void reset() {
+		this.level = null;
 		this.dimension = null;
 		this.scanIndex = 0;
+		this.refreshIndex = 0;
+		this.ticksUntilDiscoveryRescan = 0;
+		this.ticksUntilPlayerRefresh = 0;
+		this.ticksUntilBackgroundRefresh = 0;
 	}
 
 	private static List<ChunkOffset> radialOffsets(int range) {

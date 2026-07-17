@@ -72,4 +72,22 @@ class AtlasStorageTest {
 		assertEquals(24, loaded.colorAt("minecraft:overworld", 0, 0, true));
 		assertTrue(loaded.quickMarker().isEmpty());
 	}
+
+	@Test
+	void saveSnapshotIsStableWhenAtlasChangesLater(@TempDir Path directory) throws Exception {
+		AtlasStorage storage = new AtlasStorage(directory);
+		MapAtlas atlas = new MapAtlas();
+		byte[] initial = new byte[16 * 16];
+		java.util.Arrays.fill(initial, (byte)24);
+		atlas.putTerrainChunk("minecraft:overworld", 0, 0, initial);
+		AtlasStorage.SaveSnapshot snapshot = storage.snapshot("server:example.test", atlas);
+
+		byte[] changed = new byte[16 * 16];
+		java.util.Arrays.fill(changed, (byte)40);
+		atlas.putTerrainChunk("minecraft:overworld", 0, 0, changed);
+		storage.save(snapshot);
+
+		MapAtlas loaded = storage.load("server:example.test");
+		assertEquals(24, loaded.colorAt("minecraft:overworld", 0, 0, true));
+	}
 }
