@@ -126,8 +126,14 @@ public final class MapMarkerRenderer {
 		} else {
 			onMap = Math.abs(dx) <= halfWidth && Math.abs(dz) <= halfHeight;
 			if (!onMap) {
-				dx = Math.clamp(dx, -halfWidth, halfWidth);
-				dz = Math.clamp(dz, -halfHeight, halfHeight);
+				// Keep the marker's direction from the view center. Clamping both axes
+				// independently snaps most diagonal off-screen markers into a corner.
+				double edgeScale = Math.min(
+					dx == 0.0 ? Double.POSITIVE_INFINITY : halfWidth / Math.abs(dx),
+					dz == 0.0 ? Double.POSITIVE_INFINITY : halfHeight / Math.abs(dz)
+				);
+				dx *= edgeScale;
+				dz *= edgeScale;
 			}
 		}
 		return new ProjectedMarker(

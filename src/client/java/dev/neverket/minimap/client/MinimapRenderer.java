@@ -62,7 +62,11 @@ public final class MinimapRenderer implements AutoCloseable {
 		);
 
 		int tint = mapTint(this.minecraft, this.config, this.config.opacity);
-		this.viewTexture.blit(graphics, x, y, size, size, tint);
+		if (this.config.shape == ModConfig.Shape.CIRCLE) {
+			this.viewTexture.blitCircular(graphics, x, y, size, size, tint);
+		} else {
+			this.viewTexture.blit(graphics, x, y, size, size, tint);
+		}
 		if (this.config.showMinimapBorder) {
 			int borderColor = this.config.minimapBorderColor.argb();
 			if (this.config.shape == ModConfig.Shape.SQUARE) {
@@ -153,21 +157,23 @@ public final class MinimapRenderer implements AutoCloseable {
 	}
 
 	private static void drawCircularBorder(GuiGraphicsExtractor graphics, int x, int y, int size, int color) {
-		double centerX = x + size / 2.0;
-		double centerY = y + size / 2.0;
 		double radius = size / 2.0;
-		int previousX = Integer.MIN_VALUE;
-		int previousY = Integer.MIN_VALUE;
-		int samples = Math.max(180, size * 4);
-		for (int sample = 0; sample < samples; sample++) {
-			double angle = Math.PI * 2.0 * sample / samples;
-			int pixelX = (int)Math.round(centerX + Math.cos(angle) * radius);
-			int pixelY = (int)Math.round(centerY + Math.sin(angle) * radius);
-			if (pixelX != previousX || pixelY != previousY) {
-				graphics.fill(pixelX, pixelY, pixelX + 1, pixelY + 1, color);
-				previousX = pixelX;
-				previousY = pixelY;
+		double innerRadius = Math.max(0.0, radius - 1.0);
+		double center = size / 2.0;
+		for (int row = 0; row < size; row++) {
+			double dy = row + 0.5 - center;
+			double outerSpan = Math.sqrt(Math.max(0.0, radius * radius - dy * dy));
+			int outerLeft = Math.max(0, (int)Math.ceil(center - outerSpan - 0.5));
+			int outerRight = Math.min(size, (int)Math.floor(center + outerSpan - 0.5) + 1);
+			if (Math.abs(dy) >= innerRadius) {
+				graphics.fill(x + outerLeft, y + row, x + outerRight, y + row + 1, color);
+				continue;
 			}
+			double innerSpan = Math.sqrt(innerRadius * innerRadius - dy * dy);
+			int innerLeft = Math.max(outerLeft, (int)Math.ceil(center - innerSpan - 0.5));
+			int innerRight = Math.min(outerRight, (int)Math.floor(center + innerSpan - 0.5) + 1);
+			graphics.fill(x + outerLeft, y + row, x + innerLeft, y + row + 1, color);
+			graphics.fill(x + innerRight, y + row, x + outerRight, y + row + 1, color);
 		}
 	}
 

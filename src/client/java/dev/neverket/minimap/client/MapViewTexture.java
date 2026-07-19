@@ -2,15 +2,23 @@ package dev.neverket.minimap.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.neverket.minimap.atlas.MapAtlas;
 import dev.neverket.minimap.config.ModConfig.UnknownTerrain;
 import java.util.Arrays;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.navigation.ScreenRectangle;
+import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.state.gui.GuiElementRenderState;
+import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.material.MapColor;
+import org.joml.Matrix3x2f;
+import org.joml.Matrix3x2fc;
+import org.jspecify.annotations.Nullable;
 
 public final class MapViewTexture implements AutoCloseable {
 	private static final int DEFAULT_OVERSCAN = 4;
@@ -145,8 +153,6 @@ public final class MapViewTexture implements AutoCloseable {
 		}
 		long updateStartedAt = System.nanoTime();
 
-		double radius = Math.min(this.viewWidth, this.viewHeight) / 2.0 - 0.5;
-		double radiusSquared = radius * radius;
 		int unknownColor = unknown == UnknownTerrain.DARK ? 0xFF101216 : dimTransparentUnknown ? 0x50101216 : 0;
 		int pixelCount = this.textureWidth * this.textureHeight;
 		this.ensureTerrainBuffers(terrainContours ? pixelCount : 0);
@@ -168,11 +174,6 @@ public final class MapViewTexture implements AutoCloseable {
 			for (int x = 0; x < this.textureWidth; x++) {
 				double dx = x + 0.5 - this.textureWidth / 2.0;
 				double dz = y + 0.5 - this.textureHeight / 2.0;
-				if (circular && dx * dx + dz * dz > radiusSquared) {
-					this.texture.getPixels().setPixel(x, y, 0);
-					continue;
-				}
-
 				int worldX = (int)Math.floor(sampleCenterX + dx * blocksPerTexturePixelX);
 				int worldZ = (int)Math.floor(sampleCenterZ + dz * blocksPerTexturePixelZ);
 				int packedColor = colorSampler.colorAt(worldX, worldZ);
@@ -250,6 +251,93 @@ public final class MapViewTexture implements AutoCloseable {
 			RenderPipelines.GUI_TEXTURED, this.id, x, y, this.sourceU, this.sourceV, width, height,
 			this.viewWidth, this.viewHeight, this.textureWidth, this.textureHeight, color
 		);
+	}
+
+	/** Draws a screen-stable circular crop without baking the moving crop into the cached map texture. */
+	public void blitCircular(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int color) {
+		this.ensureCreated();
+		AbstractTexture renderedTexture = this.minecraft.getTextureManager().getTexture(this.id);
+		graphics.guiRenderState.addGuiElement(new CircularBlitRenderState(
+			TextureSetup.singleTexture(renderedTexture.getTextureView(), renderedTexture.getSampler()),
+			new Matrix3x2f(graphics.pose()), x, y, width, height, this.sourceU, this.sourceV,
+			this.textureWidth, this.textureHeight, color, graphics.scissorStack.peek()
+		));
+	}
+
+	private record CircularBlitRenderState(
+		TextureSetup textureSetup,
+		Matrix3x2fc pose,
+		int x,
+		int y,
+		int width,
+		int height,
+		float sourceU,
+		float sourceV,
+		int textureWidth,
+		int textureHeight,
+		int color,
+		@Nullable ScreenRectangle scissorArea,
+		@Nullable ScreenRectangle bounds
+	) implements GuiElementRenderState {
+		private CircularBlitRenderState(
+			TextureSetup textureSetup,
+			Matrix3x2fc pose,
+			int x,
+			int y,
+			int width,
+			int height,
+			float sourceU,
+			float sourceV,
+			int textureWidth,
+			int textureHeight,
+			int color,
+			@Nullable ScreenRectangle scissorArea
+		) {
+			this(
+				textureSetup, pose, x, y, width, height, sourceU, sourceV, textureWidth, textureHeight, color,
+				scissorArea, bounds(x, y, width, height, pose, scissorArea)
+			);
+		}
+
+		@Override
+		public com.mojang.blaze3d.pipeline.RenderPipeline pipeline() {
+			return RenderPipelines.GUI_TEXTURED;
+		}
+
+		@Override
+		public void buildVertices(VertexConsumer vertices) {
+			double radius = Math.min(this.width, this.height) / 2.0;
+			double centerX = this.width / 2.0;
+			double centerY = this.height / 2.0;
+			for (int row = 0; row < this.height; row++) {
+				double dy = row + 0.5 - centerY;
+				double halfSpan = Math.sqrt(Math.max(0.0, radius * radius - dy * dy));
+				int left = Math.max(0, (int)Math.ceil(centerX - halfSpan - 0.5));
+				int right = Math.min(this.width, (int)Math.floor(centerX + halfSpan - 0.5) + 1);
+				if (left >= right) {
+					continue;
+				}
+				float u0 = (this.sourceU + left) / this.textureWidth;
+				float u1 = (this.sourceU + right) / this.textureWidth;
+				float v0 = (this.sourceV + row) / this.textureHeight;
+				float v1 = (this.sourceV + row + 1) / this.textureHeight;
+				int x0 = this.x + left;
+				int x1 = this.x + right;
+				int y0 = this.y + row;
+				int y1 = y0 + 1;
+				vertices.addVertexWith2DPose(this.pose, x0, y0).setUv(u0, v0).setColor(this.color);
+				vertices.addVertexWith2DPose(this.pose, x0, y1).setUv(u0, v1).setColor(this.color);
+				vertices.addVertexWith2DPose(this.pose, x1, y1).setUv(u1, v1).setColor(this.color);
+				vertices.addVertexWith2DPose(this.pose, x1, y0).setUv(u1, v0).setColor(this.color);
+			}
+		}
+
+		private static @Nullable ScreenRectangle bounds(
+			int x, int y, int width, int height, Matrix3x2fc pose, @Nullable ScreenRectangle scissorArea
+		) {
+			ScreenRectangle bounds = new ScreenRectangle(x, y, width, height).transformMaxBounds(pose);
+			return scissorArea == null ? bounds : scissorArea.intersection(bounds);
+		}
 	}
 
 	private void sampleTerrain(
