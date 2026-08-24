@@ -1,6 +1,6 @@
 # Neverket Minimap
 
-Клиентский мод для Minecraft Java Edition 26.2 на Fabric. Он показывает мини-карту и локальный атлас, собранный из ванильных карт или из всех загруженных клиентом чанков.
+Клиентский мод для Minecraft Java Edition 1.21.1 и 26.2 на Fabric и NeoForge. Он показывает мини-карту и локальный атлас, собранный из ванильных карт или из всех загруженных клиентом чанков.
 
 Мод не требует установки на сервер, не использует mixin и не отправляет собственные сетевые запросы.
 
@@ -98,7 +98,7 @@
 - ограничены кругом вокруг игрока;
 - очищаются при смене мира или измерения.
 
-Фактический радиус равен минимуму из настройки тумана, дальности прорисовки клиента и 32 чанков. Значение по умолчанию — 8 чанков.
+Фактический радиус равен минимуму из настройки тумана, дальности прорисовки клиента и 32 чанков. Значение по умолчанию — 16 чанков.
 
 ### Полноэкранная карта
 
@@ -155,6 +155,12 @@
 ## Настройки
 
 Экран настроек использует стандартные кнопки, ползунки, подсказки при наведении, затемнение и размытие фона. Параметры разделены на группы.
+
+Настройки можно открыть клавишей `N` или из списка модов, не заходя в мир: через кнопку конфигурации NeoForge либо через установленный Mod Menu на Fabric. Mod Menu является необязательным и не входит в JAR мода.
+
+Стандартный preset: размер 112 пикселей, масштаб 8 блоков на пиксель, непрозрачность 100%, стороны света скрыты, чёрная рамка, контуры местности включены с радиусом 16 чанков, ночное затемнение 100%, быстрая метка `Жёлтый крест`, на рамке до 6 баннеров. Режим записи остаётся `Сделанные карты` и не зависит от этого preset.
+
+Освещение миникарты и полноэкранной карты рассчитывается одинаково и применяется как GPU tint. Смена времени суток не вызывает повторную генерацию или загрузку текстуры карты.
 
 ### Мини-карта
 
@@ -279,17 +285,25 @@ UUID из этого файла отличает пересозданный ми
 
 ## Требования
 
-- Minecraft Java Edition 26.2.
-- Fabric Loader 0.19.3 или новее для Minecraft 26.2.
-- Fabric API 0.154.2+26.2 или совместимая версия.
-- Java 25 для игры и сборки этой версии проекта.
+| Minecraft | Платформа | Loader/API | Java | Артефакт |
+| --- | --- | --- | --- | --- |
+| 1.21.1 | Fabric | Fabric Loader 0.16.10+; Fabric API 0.116.15+1.21.1 встроен в JAR | 21 | `neverket-minimap-fabric-<версия>-mc1.21.1.jar` |
+| 1.21.1 | NeoForge | NeoForge 21.1.248+ из ветки 21.1.x | 21 | `neverket-minimap-neoforge-<версия>-mc1.21.1.jar` |
+| 26.2 | Fabric | Fabric Loader 0.19.3+ и Fabric API 0.154.2+26.2+ | 25 | `neverket-minimap-fabric-<версия>-mc26.2.jar` |
+| 26.2 | NeoForge | NeoForge 26.2.0.63+ из ветки 26.2.x | 25 | `neverket-minimap-neoforge-<версия>-mc26.2.jar` |
+
+Для каждой строки выпускается отдельный JAR. Один бинарный файл нельзя безопасно объявить совместимым со всеми версиями от 1.21.1 до 26.2: за это время изменились Java, имена и сигнатуры Minecraft rendering API. Версии между 1.21.1 и 26.2, а также будущие версии требуют отдельного проверенного adapter-модуля и пока не заявлены как поддерживаемые.
 
 ## Установка
 
-1. Установите Fabric Loader для Minecraft 26.2.
-2. Положите Fabric API в каталог `mods`.
-3. Положите туда `neverket-minimap-<версия>.jar` без суффикса `-sources`.
-4. Запустите клиент с профилем Fabric.
+1. Установите loader согласно таблице требований. Отдельный Fabric API нужен для Minecraft 26.2; в Fabric-сборку 1.21.1 совместимая версия API уже вложена. Для кнопки настроек в списке модов Fabric дополнительно установите Mod Menu; на NeoForge эта кнопка встроена в loader.
+2. Положите в каталог `mods` JAR, в имени которого совпадают и платформа, и версия Minecraft:
+   - `neverket-minimap-fabric-<версия>-mc1.21.1.jar`;
+   - `neverket-minimap-neoforge-<версия>-mc1.21.1.jar`;
+   - `neverket-minimap-fabric-<версия>-mc26.2.jar`;
+   - `neverket-minimap-neoforge-<версия>-mc26.2.jar`.
+3. Не смешивайте JAR разных платформ/версий Minecraft и не устанавливайте файл с суффиксом `-sources`.
+4. Запустите клиент с профилем выбранного loader.
 
 Стандартные каталоги `mods`:
 
@@ -309,12 +323,12 @@ Test-Path .\gradlew.bat
 .\gradlew.bat --version
 ```
 
-В выводе Gradle `Launcher JVM` должна быть указана Java 25.
+Для сборки всей матрицы `Launcher JVM` должна быть Java 25. Модули Minecraft 1.21.1 автоматически используют toolchain Java 21 через Foojay resolver.
 
 Сборка в Windows:
 
 ```powershell
-.\gradlew.bat clean build
+.\gradlew.bat clean test :fabric:mc1_21_1:build :fabric:mc26_2:build :neoforge:mc1_21_1:build :neoforge:mc26_2:build
 ```
 
 Если системная Java отличается:
@@ -322,19 +336,22 @@ Test-Path .\gradlew.bat
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-25"
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
-.\gradlew.bat clean build
+.\gradlew.bat clean test :fabric:mc1_21_1:build :fabric:mc26_2:build :neoforge:mc1_21_1:build :neoforge:mc26_2:build
 ```
 
 Linux и macOS:
 
 ```bash
-./gradlew clean build
+./gradlew clean test :fabric:mc1_21_1:build :fabric:mc26_2:build :neoforge:mc1_21_1:build :neoforge:mc26_2:build
 ```
 
 Результат:
 
 ```text
-build/libs/neverket-minimap-<версия>.jar
+fabric/1.21.1/build/libs/neverket-minimap-fabric-<версия>-mc1.21.1.jar
+fabric/26.2/build/libs/neverket-minimap-fabric-<версия>-mc26.2.jar
+neoforge/1.21.1/build/libs/neverket-minimap-neoforge-<версия>-mc1.21.1.jar
+neoforge/26.2/build/libs/neverket-minimap-neoforge-<версия>-mc26.2.jar
 ```
 
 JAR с суффиксом `-sources` предназначен для разработчиков и в игру не устанавливается.
@@ -354,19 +371,39 @@ JAR с суффиксом `-sources` предназначен для разра�
 
 ## Запуск из исходников
 
+Minecraft 1.21.1:
+
 ```powershell
-.\gradlew.bat runClient
+.\gradlew.bat :fabric:mc1_21_1:runClient
+.\gradlew.bat :neoforge:mc1_21_1:runClient
 ```
 
-Тестовая директория игры создаётся в `run/`.
+Minecraft 26.2:
 
-В IntelliJ IDEA откройте репозиторий как Gradle-проект, выберите JDK 25 и запустите задачу `runClient` или конфигурацию `Minecraft Client`.
+```powershell
+.\gradlew.bat :fabric:mc26_2:runClient
+.\gradlew.bat :neoforge:mc26_2:runClient
+```
+
+Тестовые директории игры создаются внутри соответствующего version-модуля, например `fabric/26.2/run/` или `neoforge/1.21.1/run/`.
+
+В IntelliJ IDEA откройте репозиторий как Gradle-проект, выберите JDK 25 и запустите задачу нужной версии и платформы.
+
+## Структура платформ
+
+- `src/main` — общие модели, конфигурация и хранилище без зависимости от loader;
+- `src/client` — общий клиентский adapter Minecraft 1.21.1;
+- `src/client26` — общий клиентский adapter Minecraft 26.2;
+- `fabric/1.21.1` и `fabric/26.2` — Fabric entrypoints и metadata по версиям Minecraft;
+- `neoforge/1.21.1` и `neoforge/26.2` — NeoForge entrypoints и metadata по версиям Minecraft.
+
+Все варианты используют один формат конфигурации и атласа в `config/neverket-minimap`, поэтому данные сохраняются при переключении loader или поддерживаемой версии Minecraft в том же игровом каталоге.
 
 ## Проверки
 
 ```powershell
 .\gradlew.bat test
-.\gradlew.bat build
+.\gradlew.bat :fabric:mc1_21_1:build :fabric:mc26_2:build :neoforge:mc1_21_1:build :neoforge:mc26_2:build
 ```
 
 Автоматические тесты проверяют:
@@ -382,7 +419,7 @@ JAR с суффиксом `-sources` предназначен для разра�
 - сохранение, загрузку и совместимость форматов;
 - идентификацию одиночных миров.
 
-Перед выпуском также проверяются компиляция клиентского source set, JSON локализаций, версия внутри `fabric.mod.json` и содержимое итогового JAR.
+Перед выпуском также проверяются все четыре клиентские сборки, JSON локализаций, версии внутри `fabric.mod.json` и `neoforge.mods.toml`, а также содержимое итоговых JAR.
 
 ## Ограничения
 

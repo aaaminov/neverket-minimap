@@ -1,6 +1,7 @@
 package dev.neverket.minimap.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -14,30 +15,38 @@ class ModConfigTest {
 	Path directory;
 
 	@Test
-	void newConfigUsesTopLeftAndDefaultNightDarkness() {
+	void newConfigUsesTheDefaultPresetWithoutChangingMapMode() {
 		ModConfig config = ModConfig.load(this.directory.resolve("missing.json"));
 
 		assertEquals(ModConfig.Corner.TOP_LEFT, config.corner);
-		assertEquals(0.5F, config.nightDarkness);
+		assertEquals(112, config.size);
+		assertEquals(1.0F, config.opacity);
+		assertEquals(8, config.zoom);
+		assertFalse(config.showCardinalDirections);
+		assertTrue(config.showTerrainContours);
+		assertEquals(16, config.terrainContourRangeChunks);
+		assertEquals(ModConfig.RecordingMode.MAPS, config.recordingMode);
+		assertEquals(ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL, config.mapDetailMode);
+		assertEquals(1.0F, config.nightDarkness);
 		assertTrue(config.pauseOnFullscreenMap);
-		assertEquals(ModConfig.QuickMarkerIcon.TARGET_POINT, config.quickMarkerIcon);
+		assertEquals(ModConfig.QuickMarkerIcon.YELLOW_X, config.quickMarkerIcon);
 		assertTrue(config.showMinimapBorder);
-		assertEquals(ModConfig.MinimapBorderColor.WHITE, config.minimapBorderColor);
-		assertEquals(5, config.maxEdgeBannerMarkers);
+		assertEquals(ModConfig.MinimapBorderColor.BLACK, config.minimapBorderColor);
+		assertEquals(6, config.maxEdgeBannerMarkers);
 		assertEquals(ModConfig.BiomeHighlightColor.CYAN, config.biomeHighlightColor);
 		assertEquals(0.35F, config.biomeHighlightOpacity);
 		assertTrue(config.showRecordingAreaOnBiomeHighlight);
 	}
 
 	@Test
-	void oldConfigWithoutNightDarknessKeepsCompatibleDefault() throws IOException {
+	void oldConfigWithoutNightDarknessUsesTheCurrentDefault() throws IOException {
 		Path path = this.directory.resolve("config.json");
 		Files.writeString(path, "{\"corner\":\"BOTTOM_RIGHT\",\"mapLightingMode\":\"DAY_NIGHT\"}");
 
 		ModConfig config = ModConfig.load(path);
 
 		assertEquals(ModConfig.Corner.BOTTOM_RIGHT, config.corner);
-		assertEquals(0.5F, config.nightDarkness);
+		assertEquals(1.0F, config.nightDarkness);
 	}
 
 	@Test

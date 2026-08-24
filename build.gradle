@@ -1,5 +1,8 @@
 plugins {
-	id "net.fabricmc.fabric-loom" version "${loom_version}"
+	id "java-library"
+	id "net.fabricmc.fabric-loom-remap" version "${loom_version}" apply false
+	id "net.fabricmc.fabric-loom" version "${loom_version}" apply false
+	id "net.neoforged.moddev" version "${moddev_version}" apply false
 }
 
 def buildNumberFile = file("version.properties")
@@ -19,6 +22,12 @@ def minorChanged = majorChanged || versionMinor != lastVersionMinor
 def storedBuildNumber = Integer.parseInt(buildNumberProperties.getProperty("build_number", "-1"))
 def versionedInputs = files(
 	fileTree("src"),
+	fileTree("fabric") {
+		exclude("**/build/**", "**/run/**")
+	},
+	fileTree("neoforge") {
+		exclude("**/build/**", "**/run/**")
+	},
 	file("build.gradle"),
 	file("gradle.properties"),
 	file("settings.gradle")
@@ -36,35 +45,19 @@ version = "${versionMajor}.${versionMinor}.${nextBuildNumber}"
 group = project.maven_group
 
 base {
-	archivesName = project.archives_base_name
+	archivesName = "${project.archives_base_name}-common"
 }
 
-loom {
-	splitEnvironmentSourceSets()
-
-	mods {
-		"neverket-minimap" {
-			sourceSet sourceSets.main
-			sourceSet sourceSets.client
-		}
-	}
+repositories {
+	mavenCentral()
 }
 
 dependencies {
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	api "com.google.code.gson:gson:2.11.0"
 
 	testImplementation platform("org.junit:junit-bom:5.14.2")
 	testImplementation "org.junit.jupiter:junit-jupiter"
 	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
-}
-
-processResources {
-	inputs.property "version", project.version
-	filesMatching("fabric.mod.json") {
-		expand "version": project.version
-	}
 }
 
 tasks.register("updateBuildVersion") {
@@ -84,12 +77,18 @@ tasks.register("updateBuildVersion") {
 	}
 }
 
-tasks.named("jar") {
-	dependsOn tasks.named("updateBuildVersion")
+subprojects {
+	group = rootProject.group
+	version = rootProject.version
+
+	tasks.matching { it.name == "jar" }.configureEach {
+		dependsOn rootProject.tasks.named("updateBuildVersion")
+	}
 }
 
 tasks.withType(JavaCompile).configureEach {
-	options.release = 25
+	options.release = 21
+	options.encoding = "UTF-8"
 }
 
 tasks.withType(Test).configureEach {
@@ -98,6 +97,6 @@ tasks.withType(Test).configureEach {
 
 java {
 	withSourcesJar()
-	sourceCompatibility = JavaVersion.VERSION_25
-	targetCompatibility = JavaVersion.VERSION_25
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
 }

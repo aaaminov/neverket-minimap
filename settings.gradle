@@ -4,9 +4,23 @@ pluginManagement {
 			name = "Fabric"
 			url = "https://maven.fabricmc.net/"
 		}
+		maven {
+			name = "NeoForge"
+			url = "https://maven.neoforged.net/releases/"
+		}
 		mavenCentral()
 		gradlePluginPortal()
 	}
 }
 
+plugins {
+	id "org.gradle.toolchains.foojay-resolver-convention" version "1.0.0"
+}
+
 rootProject.name = "neverket-minimap"
+include("fabric:mc1_21_1", "fabric:mc26_2", "neoforge:mc1_21_1", "neoforge:mc26_2")
+
+project(":fabric:mc1_21_1").projectDir = file("fabric/1.21.1")
+project(":fabric:mc26_2").projectDir = file("fabric/26.2")
+project(":neoforge:mc1_21_1").projectDir = file("neoforge/1.21.1")
+project(":neoforge:mc26_2").projectDir = file("neoforge/26.2")

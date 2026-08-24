@@ -3,13 +3,16 @@
   "id": "neverket-minimap",
   "version": "${version}",
   "name": "Neverket Minimap",
-  "description": "A minimap whose explored terrain is assembled from vanilla maps collected by the player.",
+  "description": "A client-side minimap assembled from vanilla maps and terrain loaded by the player.",
   "authors": ["Neverket Minimap contributors"],
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
     "client": [
-      "dev.neverket.minimap.NeverketMinimapClient"
+      "dev.neverket.minimap.fabric26.NeverketMinimapFabric26"
+    ],
+    "modmenu": [
+      "dev.neverket.minimap.fabric26.NeverketMinimapModMenu26"
     ]
   },
   "depends": {
@@ -17,5 +20,8 @@
     "minecraft": "~26.2",
     "java": ">=25",
     "fabric-api": ">=0.154.2"
+  },
+  "suggests": {
+    "modmenu": "*"
   }
 }

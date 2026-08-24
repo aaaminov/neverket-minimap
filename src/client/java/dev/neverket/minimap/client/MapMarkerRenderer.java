@@ -14,15 +14,18 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.PriorityQueue;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.data.AtlasIds;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.saveddata.maps.MapDecoration;
+import net.minecraft.world.level.saveddata.maps.MapDecorationType;
 import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 
 /** Shared projection, rendering and tooltip behavior for minimap markers. */
@@ -30,7 +33,7 @@ public final class MapMarkerRenderer {
 	private static final int ICON_SIZE = 10;
 	private static final int ICON_HALF = ICON_SIZE / 2;
 	private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
-	private static final Map<String, Identifier> RECOLORED_TEXTURES = new HashMap<>();
+	private static final Map<String, ResourceLocation> RECOLORED_TEXTURES = new HashMap<>();
 
 	private final Minecraft minecraft;
 
@@ -39,7 +42,7 @@ public final class MapMarkerRenderer {
 	}
 
 	public MarkerHit render(
-		GuiGraphicsExtractor graphics,
+		GuiGraphics graphics,
 		MapAtlas atlas,
 		ModConfig config,
 		String dimension,
@@ -91,7 +94,7 @@ public final class MapMarkerRenderer {
 			}
 		}
 		if (tooltips && hovered != null) {
-			graphics.setComponentTooltipForNextFrame(this.minecraft.font, tooltip(hovered), mouseX, mouseY);
+			graphics.renderComponentTooltip(this.minecraft.font, tooltip(hovered), mouseX, mouseY);
 		}
 		return hovered;
 	}
@@ -144,10 +147,10 @@ public final class MapMarkerRenderer {
 		);
 	}
 
-	private void drawIcon(GuiGraphicsExtractor graphics, String assetId, int x, int y) {
-		Identifier identifier;
+	private void drawIcon(GuiGraphics graphics, String assetId, int x, int y) {
+		ResourceLocation identifier;
 		try {
-			identifier = Identifier.parse(assetId);
+			identifier = ResourceLocation.parse(assetId);
 		} catch (RuntimeException ignored) {
 			identifier = MapDecorationTypes.TARGET_POINT.value().assetId();
 		}
@@ -155,13 +158,15 @@ public final class MapMarkerRenderer {
 			this.drawRecoloredVanillaIcon(graphics, identifier.getPath().substring("recolored/".length()), x, y);
 			return;
 		}
-		TextureAtlasSprite sprite = this.minecraft.getAtlasManager()
-			.getAtlasOrThrow(AtlasIds.MAP_DECORATIONS)
-			.getSprite(identifier);
-		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x - ICON_HALF, y - ICON_HALF, ICON_SIZE, ICON_SIZE);
+		Holder<MapDecorationType> type = BuiltInRegistries.MAP_DECORATION_TYPE.getHolder(identifier)
+			.<Holder<MapDecorationType>>map(holder -> holder)
+			.orElse(MapDecorationTypes.TARGET_POINT);
+		MapDecoration decoration = new MapDecoration(type, (byte)0, (byte)0, (byte)0, Optional.empty());
+		TextureAtlasSprite sprite = this.minecraft.getMapDecorationTextures().get(decoration);
+		graphics.blit(x - ICON_HALF, y - ICON_HALF, 0, ICON_SIZE, ICON_SIZE, sprite);
 	}
 
-	public void drawQuickIcon(GuiGraphicsExtractor graphics, ModConfig.QuickMarkerIcon icon, int x, int y) {
+	public void drawQuickIcon(GuiGraphics graphics, ModConfig.QuickMarkerIcon icon, int x, int y) {
 		this.drawIcon(graphics, quickMarkerAsset(icon), x, y);
 	}
 
@@ -215,8 +220,8 @@ public final class MapMarkerRenderer {
 		};
 	}
 
-	private void drawRecoloredVanillaIcon(GuiGraphicsExtractor graphics, String specification, int centerX, int centerY) {
-		Identifier texture = RECOLORED_TEXTURES.get(specification);
+	private void drawRecoloredVanillaIcon(GuiGraphics graphics, String specification, int centerX, int centerY) {
+		ResourceLocation texture = RECOLORED_TEXTURES.get(specification);
 		if (texture == null) {
 			texture = this.createRecoloredTexture(specification);
 			if (texture != null) {
@@ -224,16 +229,13 @@ public final class MapMarkerRenderer {
 			}
 		}
 		if (texture != null) {
-			graphics.blit(
-				RenderPipelines.GUI_TEXTURED, texture, centerX - ICON_HALF, centerY - ICON_HALF,
-				0.0F, 0.0F, ICON_SIZE, ICON_SIZE, 8, 8, 8, 8
-			);
+			graphics.blit(texture, centerX - ICON_HALF, centerY - ICON_HALF, ICON_SIZE, ICON_SIZE, 0.0F, 0.0F, 8, 8, 8, 8);
 			return;
 		}
 		this.drawIcon(graphics, fallbackAsset(specification), centerX, centerY);
 	}
 
-	private Identifier createRecoloredTexture(String specification) {
+	private ResourceLocation createRecoloredTexture(String specification) {
 		String[] parts = specification.split("/", 2);
 		if (parts.length != 2) {
 			return null;
@@ -257,7 +259,7 @@ public final class MapMarkerRenderer {
 			return null;
 		}
 
-		Identifier sourceTexture = Identifier.withDefaultNamespace("textures/map/decorations/" + source + ".png");
+		ResourceLocation sourceTexture = ResourceLocation.withDefaultNamespace("textures/map/decorations/" + source + ".png");
 		try (InputStream input = this.minecraft.getResourceManager().open(sourceTexture)) {
 			NativeImage image = NativeImage.read(input);
 			if (image.getWidth() != 8 || image.getHeight() != 8) {
@@ -266,11 +268,11 @@ public final class MapMarkerRenderer {
 			}
 			for (int y = 0; y < image.getHeight(); y++) {
 				for (int x = 0; x < image.getWidth(); x++) {
-					image.setPixel(x, y, recolorPixel(image.getPixel(x, y), source, palette));
+					image.setPixelRGBA(x, y, recolorPixel(image.getPixelRGBA(x, y), source, palette));
 				}
 			}
-			Identifier texture = Identifier.fromNamespaceAndPath("neverket-minimap", "generated/marker/" + specification);
-			this.minecraft.getTextureManager().register(texture, new DynamicTexture(texture::toString, image));
+			ResourceLocation texture = ResourceLocation.fromNamespaceAndPath("neverket-minimap", "generated/marker/" + specification);
+			this.minecraft.getTextureManager().register(texture, new DynamicTexture(image));
 			return texture;
 		} catch (IOException | RuntimeException ignored) {
 			return null;

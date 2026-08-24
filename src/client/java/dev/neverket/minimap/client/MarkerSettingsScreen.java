@@ -3,15 +3,14 @@ package dev.neverket.minimap.client;
 import dev.neverket.minimap.config.ModConfig;
 import java.util.Locale;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.AbstractSliderButton;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsSubScreen;
-import net.minecraft.client.input.InputWithModifiers;
-import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
@@ -27,31 +26,31 @@ public final class MarkerSettingsScreen extends OptionsSubScreen {
 
 	@Override
 	protected void addOptions() {
-		this.list.addHeader(Component.translatable("group.neverket-minimap.quick_marker"));
+		this.addHeader(Component.translatable("group.neverket-minimap.quick_marker"));
 		ModConfig.QuickMarkerIcon[] icons = ModConfig.QuickMarkerIcon.values();
 		for (int index = 0; index < icons.length; index += 2) {
 			IconChoiceButton left = this.iconButton(icons[index]);
 			IconChoiceButton right = index + 1 < icons.length ? this.iconButton(icons[index + 1]) : null;
 			if (right == null) {
-				this.list.addBig(left);
+				this.addBigWidget(left);
 			} else {
 				this.list.addSmall(left, right);
 			}
 		}
 
-		this.list.addHeader(Component.translatable("group.neverket-minimap.edge_markers"));
+		this.addHeader(Component.translatable("group.neverket-minimap.edge_markers"));
 		EdgeMarkerSlider edgeMarkers = new EdgeMarkerSlider(this.config);
 		edgeMarkers.setTooltip(Tooltip.create(Component.translatable("description.neverket-minimap.edge_banner_markers")));
-		this.list.addBig(edgeMarkers);
+		this.addBigWidget(edgeMarkers);
 	}
 
 	@Override
-	public boolean keyPressed(KeyEvent event) {
-		if (event.key() == GLFW.GLFW_KEY_N) {
-			this.minecraft.gui.setScreen(null);
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (keyCode == GLFW.GLFW_KEY_N) {
+			this.minecraft.setScreen(null);
 			return true;
 		}
-		return super.keyPressed(event);
+		return super.keyPressed(keyCode, scanCode, modifiers);
 	}
 
 	@Override
@@ -61,16 +60,25 @@ public final class MarkerSettingsScreen extends OptionsSubScreen {
 	}
 
 	@Override
-	public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-		this.extractBlurredBackground(graphics);
+	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		graphics.fill(0, 0, this.width, this.height, 0x72000000);
 	}
 
 	private IconChoiceButton iconButton(ModConfig.QuickMarkerIcon icon) {
 		IconChoiceButton button = new IconChoiceButton(icon);
-		button.setOverrideRenderHighlightedSprite(() -> this.config.quickMarkerIcon == icon);
 		button.setTooltip(Tooltip.create(Component.translatable("description.neverket-minimap.quick_marker_icon")));
 		return button;
+	}
+
+	private void addHeader(Component title) {
+		Button header = Button.builder(title, button -> {}).size(310, 20).build();
+		header.active = false;
+		this.list.addSmall(header, null);
+	}
+
+	private void addBigWidget(net.minecraft.client.gui.components.AbstractWidget widget) {
+		widget.setWidth(310);
+		this.list.addSmall(widget, null);
 	}
 
 	private final class IconChoiceButton extends AbstractButton {
@@ -84,21 +92,17 @@ public final class MarkerSettingsScreen extends OptionsSubScreen {
 		}
 
 		@Override
-		public void onPress(InputWithModifiers input) {
+		public void onPress() {
 			MarkerSettingsScreen.this.config.quickMarkerIcon = this.icon;
 		}
 
 		@Override
-		protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-			this.extractDefaultSprite(graphics);
+		protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+			super.renderWidget(graphics, mouseX, mouseY, partialTick);
+			if (MarkerSettingsScreen.this.config.quickMarkerIcon == this.icon) {
+				graphics.renderOutline(this.getX(), this.getY(), this.getWidth(), this.getHeight(), 0xFFFFFFFF);
+			}
 			MarkerSettingsScreen.this.markerRenderer.drawQuickIcon(graphics, this.icon, this.getX() + 13, this.getY() + this.getHeight() / 2);
-			graphics.centeredText(
-				MarkerSettingsScreen.this.font,
-				this.getMessage(),
-				this.getX() + this.getWidth() / 2 + 7,
-				this.getY() + (this.getHeight() - 8) / 2,
-				this.active ? 0xFFFFFFFF : 0xFFA0A0A0
-			);
 		}
 
 		@Override

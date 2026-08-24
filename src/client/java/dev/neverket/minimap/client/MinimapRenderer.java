@@ -1,14 +1,16 @@
 package dev.neverket.minimap.client;
 
 import dev.neverket.minimap.config.ModConfig;
+import dev.neverket.minimap.config.MapLighting;
+import java.util.Optional;
+import com.mojang.math.Axis;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.data.AtlasIds;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 
 public final class MinimapRenderer implements AutoCloseable {
@@ -29,8 +31,8 @@ public final class MinimapRenderer implements AutoCloseable {
 		this.resizeViewTexture(config.size);
 	}
 
-	public void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
-		if (!this.config.visible || this.minecraft.gui.screen() instanceof FullscreenMapScreen
+	public void render(GuiGraphics graphics, DeltaTracker deltaTracker) {
+		if (!this.config.visible || this.minecraft.screen instanceof FullscreenMapScreen
 			|| this.minecraft.player == null || this.minecraft.level == null || !this.session.active()) {
 			return;
 		}
@@ -51,7 +53,7 @@ public final class MinimapRenderer implements AutoCloseable {
 
 		float partialTick = deltaTracker.getGameTimeDeltaPartialTick(true);
 		var playerPosition = this.minecraft.player.getPosition(partialTick);
-		String dimension = this.minecraft.level.dimension().identifier().toString();
+		String dimension = this.minecraft.level.dimension().location().toString();
 		this.viewTexture.update(
 			this.session.atlas(), this.session.terrainContours(), dimension,
 			playerPosition.x, playerPosition.z, this.config.zoom, size, size,
@@ -81,18 +83,18 @@ public final class MinimapRenderer implements AutoCloseable {
 			x, y, size, size, this.config.shape == ModConfig.Shape.CIRCLE,
 			Integer.MIN_VALUE, Integer.MIN_VALUE, false
 		);
-		drawPlayerArrow(graphics, x + size / 2, y + size / 2, this.minecraft.player.getYRot(partialTick));
+		drawPlayerArrow(graphics, x + size / 2, y + size / 2, this.minecraft.player.getViewYRot(partialTick));
 
 		if (this.config.showCardinalDirections) {
-			graphics.centeredText(this.minecraft.font, Component.translatable("direction.neverket-minimap.north"), x + size / 2, y - 10, 0xFFFFFFFF);
-			graphics.centeredText(this.minecraft.font, Component.translatable("direction.neverket-minimap.south"), x + size / 2, y + size + 2, 0xFFFFFFFF);
-			graphics.text(this.minecraft.font, Component.translatable("direction.neverket-minimap.west"), x - 10, y + size / 2 - 4, 0xFFFFFFFF, true);
-			graphics.text(this.minecraft.font, Component.translatable("direction.neverket-minimap.east"), x + size + 3, y + size / 2 - 4, 0xFFFFFFFF, true);
+			graphics.drawCenteredString(this.minecraft.font, Component.translatable("direction.neverket-minimap.north"), x + size / 2, y - 10, 0xFFFFFFFF);
+			graphics.drawCenteredString(this.minecraft.font, Component.translatable("direction.neverket-minimap.south"), x + size / 2, y + size + 2, 0xFFFFFFFF);
+			graphics.drawString(this.minecraft.font, Component.translatable("direction.neverket-minimap.west"), x - 10, y + size / 2 - 4, 0xFFFFFFFF, true);
+			graphics.drawString(this.minecraft.font, Component.translatable("direction.neverket-minimap.east"), x + size + 3, y + size / 2 - 4, 0xFFFFFFFF, true);
 		}
 		if (this.config.showCoordinates) {
 			String coordinates = (int)Math.floor(playerPosition.x) + ", " + (int)Math.floor(playerPosition.z);
 			int coordinatesY = y + size + (this.config.showCardinalDirections ? 17 : 5);
-			graphics.centeredText(this.minecraft.font, coordinates, x + size / 2, coordinatesY, 0xFFFFFFFF);
+			graphics.drawCenteredString(this.minecraft.font, coordinates, x + size / 2, coordinatesY, 0xFFFFFFFF);
 		}
 	}
 
@@ -115,7 +117,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		this.viewSize = size;
 		this.viewTexture = new MapViewTexture(
 			this.minecraft,
-			Identifier.fromNamespaceAndPath("neverket-minimap", "hud_view"),
+			ResourceLocation.fromNamespaceAndPath("neverket-minimap", "hud_view"),
 			size,
 			size
 		);
@@ -127,36 +129,36 @@ public final class MinimapRenderer implements AutoCloseable {
 	}
 
 	static int mapTint(Minecraft minecraft, ModConfig config, float opacity) {
-		float brightness = 1.0F;
-		if (config.mapLightingMode == ModConfig.MapLightingMode.DAY_NIGHT && minecraft.level != null
-			&& minecraft.level.dimensionType().hasSkyLight() && !minecraft.level.dimensionType().hasFixedTime()) {
-			brightness = 1.0F - Math.clamp(minecraft.level.getSkyDarken() / 15.0F, 0.0F, 1.0F) * config.nightDarkness;
+		if (minecraft.level == null) {
+			return MapLighting.tint(config, opacity, 0, false, false);
 		}
-		int alpha = Math.round(Math.clamp(opacity, 0.0F, 1.0F) * 255.0F);
-		int channel = Math.round(brightness * 255.0F);
-		return alpha << 24 | channel << 16 | channel << 8 | channel;
+		return MapLighting.tint(
+			config,
+			opacity,
+			minecraft.level.getSkyDarken(),
+			minecraft.level.dimensionType().hasSkyLight(),
+			minecraft.level.dimensionType().hasFixedTime()
+		);
 	}
 
-	static void drawPlayerArrow(GuiGraphicsExtractor graphics, int centerX, int centerY, float yawDegrees) {
-		TextureAtlasSprite sprite = Minecraft.getInstance()
-			.getAtlasManager()
-			.getAtlasOrThrow(AtlasIds.MAP_DECORATIONS)
-			.getSprite(MapDecorationTypes.PLAYER.value().assetId());
-		graphics.pose().pushMatrix();
-		graphics.pose().translate(centerX, centerY);
-		graphics.pose().rotate((float)Math.toRadians(yawDegrees + 180.0F));
-		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, -5, -5, 10, 10);
-		graphics.pose().popMatrix();
+	static void drawPlayerArrow(GuiGraphics graphics, int centerX, int centerY, float yawDegrees) {
+		MapDecoration decoration = new MapDecoration(MapDecorationTypes.PLAYER, (byte)0, (byte)0, (byte)0, Optional.empty());
+		TextureAtlasSprite sprite = Minecraft.getInstance().getMapDecorationTextures().get(decoration);
+		graphics.pose().pushPose();
+		graphics.pose().translate(centerX, centerY, 0.0F);
+		graphics.pose().mulPose(Axis.ZP.rotationDegrees(yawDegrees + 180.0F));
+		graphics.blit(-5, -5, 0, 10, 10, sprite);
+		graphics.pose().popPose();
 	}
 
-	private static void drawBorder(GuiGraphicsExtractor graphics, int x, int y, int size, int color) {
+	private static void drawBorder(GuiGraphics graphics, int x, int y, int size, int color) {
 		graphics.fill(x - 1, y - 1, x + size + 1, y, color);
 		graphics.fill(x - 1, y + size, x + size + 1, y + size + 1, color);
 		graphics.fill(x - 1, y, x, y + size, color);
 		graphics.fill(x + size, y, x + size + 1, y + size, color);
 	}
 
-	private static void drawCircularBorder(GuiGraphicsExtractor graphics, int x, int y, int size, int color) {
+	private static void drawCircularBorder(GuiGraphics graphics, int x, int y, int size, int color) {
 		double radius = size / 2.0;
 		double innerRadius = Math.max(0.0, radius - 1.0);
 		double center = size / 2.0;

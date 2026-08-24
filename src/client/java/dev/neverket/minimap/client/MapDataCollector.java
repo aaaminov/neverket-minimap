@@ -10,6 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 import net.minecraft.world.level.saveddata.maps.MapBanner;
@@ -70,7 +71,7 @@ public final class MapDataCollector {
 		MapItemSavedData serverData
 	) {
 		if (serverData != null) {
-			return new MapLocation(serverData.dimension.identifier().toString(), serverData.centerX, serverData.centerZ);
+			return new MapLocation(serverData.dimension.location().toString(), serverData.centerX, serverData.centerZ);
 		}
 
 		MapSnapshot known = atlas.findById(mapId.id()).orElse(null);
@@ -90,7 +91,7 @@ public final class MapDataCollector {
 
 		MapDecoration marker = playerMarkers.getFirst();
 		return new MapLocation(
-			minecraft.level.dimension().identifier().toString(),
+			minecraft.level.dimension().location().toString(),
 			MapCoordinates.centerFromPlayerMarker(minecraft.player.getX(), marker.x(), clientData.scale),
 			MapCoordinates.centerFromPlayerMarker(minecraft.player.getZ(), marker.y(), clientData.scale)
 		);
@@ -98,7 +99,16 @@ public final class MapDataCollector {
 
 	private MapItemSavedData serverData(Minecraft minecraft, MapId mapId) {
 		IntegratedServer server = minecraft.getSingleplayerServer();
-		return server == null ? null : server.overworld().getMapData(mapId);
+		if (server == null) {
+			return null;
+		}
+		for (ServerLevel level : server.getAllLevels()) {
+			MapItemSavedData mapData = level.getMapData(mapId);
+			if (mapData != null) {
+				return mapData;
+			}
+		}
+		return null;
 	}
 
 	private List<BannerMarker> bannerMarkers(

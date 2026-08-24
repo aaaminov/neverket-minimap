@@ -7,14 +7,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.minecraft.client.KeyMapping;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -71,15 +70,16 @@ public final class FullscreenMapScreen extends Screen {
 		KeyMapping chunkDebugKey
 	) {
 		super(Component.translatable("screen.neverket-minimap.fullscreen"));
+		Minecraft minecraft = Minecraft.getInstance();
 		this.session = session;
 		this.config = config;
 		this.biomeHighlightKey = biomeHighlightKey;
 		this.chunkDebugKey = chunkDebugKey;
-		this.markerRenderer = new MapMarkerRenderer(this.minecraft);
-		this.centerX = this.minecraft.player == null ? 0 : this.minecraft.player.getX();
-		this.centerZ = this.minecraft.player == null ? 0 : this.minecraft.player.getZ();
+		this.markerRenderer = new MapMarkerRenderer(minecraft);
+		this.centerX = minecraft.player == null ? 0 : minecraft.player.getX();
+		this.centerZ = minecraft.player == null ? 0 : minecraft.player.getZ();
 		this.zoom = config.zoom;
-		this.dimension = this.minecraft.level == null ? "minecraft:overworld" : this.minecraft.level.dimension().identifier().toString();
+		this.dimension = minecraft.level == null ? "minecraft:overworld" : minecraft.level.dimension().location().toString();
 	}
 
 	@Override
@@ -109,7 +109,8 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	@Override
-	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+	public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+		this.renderBackground(graphics, mouseX, mouseY, partialTick);
 		int mapX = MAP_MARGIN;
 		int mapY = MAP_TOP;
 		int mapWidth = Math.max(64, this.width - MAP_MARGIN * 2);
@@ -124,7 +125,7 @@ public final class FullscreenMapScreen extends Screen {
 			highlightKnownBiomes, this.config.biomeHighlightColor.rgb(), this.config.biomeHighlightOpacity
 		);
 		boolean viewingCurrentDimension = this.minecraft.level != null
-			&& this.dimension.equals(this.minecraft.level.dimension().identifier().toString());
+			&& this.dimension.equals(this.minecraft.level.dimension().location().toString());
 		int mapTint = viewingCurrentDimension ? MinimapRenderer.mapTint(this.minecraft, this.config, 1.0F) : 0xFFFFFFFF;
 		this.viewTexture.blit(graphics, mapX, mapY, mapWidth, mapHeight, mapTint);
 		this.drawGrid(graphics, mapX, mapY, mapWidth, mapHeight);
@@ -144,60 +145,59 @@ public final class FullscreenMapScreen extends Screen {
 		} else {
 			this.drawLegend(graphics, mapX, mapY, mapWidth);
 		}
-		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+		super.render(graphics, mouseX, mouseY, partialTick);
 	}
 
 	@Override
-	public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-		this.extractBlurredBackground(graphics);
+	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		graphics.fill(0, 0, this.width, this.height, 0x78000000);
 	}
 
 	@Override
-	public boolean keyPressed(KeyEvent event) {
-		if (this.biomeHighlightKey.matches(event)) {
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (this.biomeHighlightKey.matches(keyCode, scanCode)) {
 			this.biomeHighlightDown = true;
 			return true;
 		}
-		if (this.chunkDebugKey.matches(event)) {
+		if (this.chunkDebugKey.matches(keyCode, scanCode)) {
 			this.chunkDebugDown = true;
 			return true;
 		}
-		if (event.key() == GLFW.GLFW_KEY_M) {
+		if (keyCode == GLFW.GLFW_KEY_M) {
 			this.onClose();
 			return true;
 		}
-		if (event.key() == GLFW.GLFW_KEY_L) {
+		if (keyCode == GLFW.GLFW_KEY_L) {
 			this.legendVisible = !this.legendVisible;
 			return true;
 		}
-		return super.keyPressed(event);
+		return super.keyPressed(keyCode, scanCode, modifiers);
 	}
 
 	@Override
-	public boolean keyReleased(KeyEvent event) {
-		if (this.biomeHighlightKey.matches(event)) {
+	public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+		if (this.biomeHighlightKey.matches(keyCode, scanCode)) {
 			this.biomeHighlightDown = false;
 			return true;
 		}
-		if (this.chunkDebugKey.matches(event)) {
+		if (this.chunkDebugKey.matches(keyCode, scanCode)) {
 			this.chunkDebugDown = false;
 			return true;
 		}
-		return super.keyReleased(event);
+		return super.keyReleased(keyCode, scanCode, modifiers);
 	}
 
 	@Override
-	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (this.biomeHighlightKey.matchesMouse(event)) {
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (this.biomeHighlightKey.matchesMouse(button)) {
 			this.biomeHighlightDown = true;
 			return true;
 		}
-		if (this.chunkDebugKey.matchesMouse(event)) {
+		if (this.chunkDebugKey.matchesMouse(button)) {
 			this.chunkDebugDown = true;
 			return true;
 		}
-		if (event.button() == 1 && this.isInsideMap(event.x(), event.y()) && !this.isInsideMapOverlay(event.x(), event.y())) {
+		if (button == 1 && this.isInsideMap(mouseX, mouseY) && !this.isInsideMapOverlay(mouseX, mouseY)) {
 			if (this.hoveredMarker != null && this.hoveredMarker.quick()) {
 				this.session.atlas().removeQuickMarker();
 				this.session.saveNow();
@@ -209,8 +209,8 @@ public final class FullscreenMapScreen extends Screen {
 				worldX = this.hoveredMarker.x();
 				worldZ = this.hoveredMarker.z();
 			} else {
-				worldX = this.worldXAt(event.x());
-				worldZ = this.worldZAt(event.y());
+				worldX = this.worldXAt(mouseX);
+				worldZ = this.worldZAt(mouseY);
 			}
 			this.session.atlas().putQuickMarker(new QuickMarker(
 				this.dimension, worldX, worldZ, System.currentTimeMillis()
@@ -218,37 +218,37 @@ public final class FullscreenMapScreen extends Screen {
 			this.session.saveNow();
 			return true;
 		}
-		return super.mouseClicked(event, doubleClick);
+		return super.mouseClicked(mouseX, mouseY, button);
 	}
 
 	@Override
-	public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-		if (event.button() == 0 && this.isInsideMap(event.x(), event.y()) && !this.isInsideMapOverlay(event.x(), event.y())) {
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
+		if (button == 0 && this.isInsideMap(mouseX, mouseY) && !this.isInsideMapOverlay(mouseX, mouseY)) {
 			this.dragging = true;
 			this.centerX -= dx * this.zoom;
 			this.centerZ -= dy * this.zoom;
 			return true;
 		}
-		return super.mouseDragged(event, dx, dy);
+		return super.mouseDragged(mouseX, mouseY, button, dx, dy);
 	}
 
 	@Override
-	public boolean mouseReleased(MouseButtonEvent event) {
-		if (event.button() == 0 && this.chunkDebugButtonDown) {
+	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+		if (button == 0 && this.chunkDebugButtonDown) {
 			this.chunkDebugButtonDown = false;
 		}
-		if (this.biomeHighlightKey.matchesMouse(event)) {
+		if (this.biomeHighlightKey.matchesMouse(button)) {
 			this.biomeHighlightDown = false;
 			return true;
 		}
-		if (this.chunkDebugKey.matchesMouse(event)) {
+		if (this.chunkDebugKey.matchesMouse(button)) {
 			this.chunkDebugDown = false;
 			return true;
 		}
-		if (event.button() == 0) {
+		if (button == 0) {
 			this.dragging = false;
 		}
-		return super.mouseReleased(event);
+		return super.mouseReleased(mouseX, mouseY, button);
 	}
 
 	@Override
@@ -281,12 +281,7 @@ public final class FullscreenMapScreen extends Screen {
 		return this.config.pauseOnFullscreenMap;
 	}
 
-	@Override
-	public boolean isInGameUi() {
-		return true;
-	}
-
-	private void drawGrid(GuiGraphicsExtractor graphics, int mapX, int mapY, int mapWidth, int mapHeight) {
+	private void drawGrid(GuiGraphics graphics, int mapX, int mapY, int mapWidth, int mapHeight) {
 		int gridStep = MAP_GRID_BLOCKS;
 		while ((double)gridStep / this.zoom < 8.0) {
 			gridStep *= 2;
@@ -312,27 +307,27 @@ public final class FullscreenMapScreen extends Screen {
 		graphics.disableScissor();
 	}
 
-	private void drawPlayer(GuiGraphicsExtractor graphics, int mapX, int mapY, int mapWidth, int mapHeight, float partialTick) {
+	private void drawPlayer(GuiGraphics graphics, int mapX, int mapY, int mapWidth, int mapHeight, float partialTick) {
 		if (this.minecraft.player == null || this.minecraft.level == null
-			|| !this.dimension.equals(this.minecraft.level.dimension().identifier().toString())) {
+			|| !this.dimension.equals(this.minecraft.level.dimension().location().toString())) {
 			return;
 		}
 		var playerPosition = this.minecraft.player.getPosition(partialTick);
 		int playerX = (int)Math.round(mapX + mapWidth / 2.0 + (playerPosition.x - this.centerX) / this.zoom);
 		int playerY = (int)Math.round(mapY + mapHeight / 2.0 + (playerPosition.z - this.centerZ) / this.zoom);
 		if (playerX >= mapX && playerX <= mapX + mapWidth && playerY >= mapY && playerY <= mapY + mapHeight) {
-			MinimapRenderer.drawPlayerArrow(graphics, playerX, playerY, this.minecraft.player.getYRot(partialTick));
+			MinimapRenderer.drawPlayerArrow(graphics, playerX, playerY, this.minecraft.player.getViewYRot(partialTick));
 		}
 	}
 
-	private void drawBorder(GuiGraphicsExtractor graphics, int x, int y, int width, int height) {
+	private void drawBorder(GuiGraphics graphics, int x, int y, int width, int height) {
 		graphics.fill(x - 1, y - 1, x + width + 1, y, 0xFF69717B);
 		graphics.fill(x - 1, y + height, x + width + 1, y + height + 1, 0xFF69717B);
 		graphics.fill(x - 1, y, x, y + height, 0xFF69717B);
 		graphics.fill(x + width, y, x + width + 1, y + height, 0xFF69717B);
 	}
 
-	private void drawStatusBar(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int mapX, int mapY, int mapWidth, int mapHeight) {
+	private void drawStatusBar(GuiGraphics graphics, int mouseX, int mouseY, int mapX, int mapY, int mapWidth, int mapHeight) {
 		boolean cursorOnMap = mouseX >= mapX && mouseX < mapX + mapWidth && mouseY >= mapY && mouseY < mapY + mapHeight;
 		int worldX = cursorOnMap
 			? (int)Math.floor(this.centerX + (mouseX - (mapX + mapWidth / 2.0)) * this.zoom)
@@ -357,8 +352,8 @@ public final class FullscreenMapScreen extends Screen {
 		int textX = mapX + 18;
 		int textY = mapY + mapHeight - 22;
 		graphics.fill(textX - 4, textY - 3, textX + this.font.width(text) + 4, textY + 11, 0x90101216);
-		graphics.text(this.font, text, textX, textY, 0xFFF0F0F0, true);
-		graphics.text(
+		graphics.drawString(this.font, text, textX, textY, 0xFFF0F0F0, true);
+		graphics.drawString(
 			this.font,
 			Component.translatable("screen.neverket-minimap.zoom_status", this.zoom),
 			MAP_MARGIN,
@@ -375,7 +370,7 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	private void drawRecordingAreaBorder(
-		GuiGraphicsExtractor graphics,
+		GuiGraphics graphics,
 		int mapX,
 		int mapY,
 		int mapWidth,
@@ -384,7 +379,7 @@ public final class FullscreenMapScreen extends Screen {
 	) {
 		if (!highlightKnownBiomes || !this.config.showRecordingAreaOnBiomeHighlight
 			|| this.minecraft.player == null || this.minecraft.level == null
-			|| !this.dimension.equals(this.minecraft.level.dimension().identifier().toString())) {
+			|| !this.dimension.equals(this.minecraft.level.dimension().location().toString())) {
 			return;
 		}
 		int range = TerrainDataCollector.recordingRangeChunks(this.minecraft);
@@ -432,7 +427,7 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	private void drawRecordingAreaPixel(
-		GuiGraphicsExtractor graphics,
+		GuiGraphics graphics,
 		int x,
 		int y,
 		int mapX,
@@ -447,7 +442,7 @@ public final class FullscreenMapScreen extends Screen {
 	}
 
 	private void drawChunkUpdateDebug(
-		GuiGraphicsExtractor graphics,
+		GuiGraphics graphics,
 		int mapX,
 		int mapY,
 		int mapWidth,
@@ -559,7 +554,7 @@ public final class FullscreenMapScreen extends Screen {
 		this.chunkDebugPanelHeight = panelHeight;
 		graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xC0101216);
 		for (int index = 0; index < lines.length; index++) {
-			graphics.text(
+			graphics.drawString(
 				this.font, lines[index], panelX + 6, panelY + 5 + index * 11,
 				index == 0 ? 0xFFFFFFFF : 0xFFE0E0E0, true
 			);
@@ -575,7 +570,7 @@ public final class FullscreenMapScreen extends Screen {
 		};
 	}
 
-	private void drawLegend(GuiGraphicsExtractor graphics, int mapX, int mapY, int mapWidth) {
+	private void drawLegend(GuiGraphics graphics, int mapX, int mapY, int mapWidth) {
 		if (!this.legendVisible) {
 			this.legendWidth = 0;
 			this.legendHeight = 0;
@@ -602,10 +597,10 @@ public final class FullscreenMapScreen extends Screen {
 		this.legendY = mapY + 6;
 		graphics.fill(this.legendX, this.legendY, this.legendX + this.legendWidth, this.legendY + this.legendHeight, 0xD0101216);
 		graphics.fill(this.legendX, this.legendY, this.legendX + this.legendWidth, this.legendY + 1, 0xFF69717B);
-		graphics.text(this.font, title, this.legendX + 8, this.legendY + 6, 0xFFFFFFFF, true);
+		graphics.drawString(this.font, title, this.legendX + 8, this.legendY + 6, 0xFFFFFFFF, true);
 		int lineY = this.legendY + 19;
 		for (Component line : lines) {
-			graphics.text(this.font, line, this.legendX + 8, lineY, 0xFFE0E0E0, false);
+			graphics.drawString(this.font, line, this.legendX + 8, lineY, 0xFFE0E0E0, false);
 			lineY += 12;
 		}
 	}
@@ -624,7 +619,7 @@ public final class FullscreenMapScreen extends Screen {
 			this.biomeCache = translatedBiome(recordedBiome);
 			return this.biomeCache;
 		}
-		if (this.minecraft.level == null || !this.dimension.equals(this.minecraft.level.dimension().identifier().toString())) {
+		if (this.minecraft.level == null || !this.dimension.equals(this.minecraft.level.dimension().location().toString())) {
 			this.biomeCache = Component.translatable("screen.neverket-minimap.biome_unknown").getString();
 			return this.biomeCache;
 		}
@@ -639,14 +634,14 @@ public final class FullscreenMapScreen extends Screen {
 		int height = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, worldX & 15, worldZ & 15);
 		this.biomeCache = this.minecraft.level.getBiome(new BlockPos(worldX, height, worldZ))
 			.unwrapKey()
-			.map(key -> Component.translatable("biome." + key.identifier().getNamespace() + "." + key.identifier().getPath()).getString())
+			.map(key -> Component.translatable("biome." + key.location().getNamespace() + "." + key.location().getPath()).getString())
 			.orElseGet(() -> Component.translatable("screen.neverket-minimap.biome_unknown").getString());
 		return this.biomeCache;
 	}
 
 	private static String translatedBiome(String biomeId) {
 		try {
-			Identifier id = Identifier.parse(biomeId);
+			ResourceLocation id = ResourceLocation.parse(biomeId);
 			return Component.translatable("biome." + id.getNamespace() + "." + id.getPath()).getString();
 		} catch (RuntimeException ignored) {
 			return Component.translatable("screen.neverket-minimap.biome_unknown").getString();
@@ -657,7 +652,7 @@ public final class FullscreenMapScreen extends Screen {
 		if (this.minecraft.player == null || this.minecraft.level == null) {
 			return;
 		}
-		this.dimension = this.minecraft.level.dimension().identifier().toString();
+		this.dimension = this.minecraft.level.dimension().location().toString();
 		this.centerX = this.minecraft.player.getX();
 		this.centerZ = this.minecraft.player.getZ();
 	}
@@ -700,7 +695,7 @@ public final class FullscreenMapScreen extends Screen {
 		this.textureHeight = requiredHeight;
 		this.viewTexture = new MapViewTexture(
 			this.minecraft,
-			Identifier.fromNamespaceAndPath("neverket-minimap", "fullscreen_view"),
+			ResourceLocation.fromNamespaceAndPath("neverket-minimap", "fullscreen_view"),
 			requiredWidth,
 			requiredHeight,
 			PAN_SNAP_TEXTURE_PIXELS

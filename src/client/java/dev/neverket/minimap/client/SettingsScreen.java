@@ -6,13 +6,13 @@ import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsSubScreen;
-import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
@@ -23,13 +23,17 @@ public final class SettingsScreen extends OptionsSubScreen {
 	private AbstractWidget minimapBorderColorWidget;
 
 	public SettingsScreen(ModConfig config) {
-		super(null, Minecraft.getInstance().options, Component.translatable("screen.neverket-minimap.settings"));
+		this(null, config);
+	}
+
+	public SettingsScreen(Screen parent, ModConfig config) {
+		super(parent, Minecraft.getInstance().options, Component.translatable("screen.neverket-minimap.settings"));
 		this.config = config;
 	}
 
 	@Override
 	protected void addOptions() {
-		this.list.addHeader(Component.translatable("group.neverket-minimap.minimap"));
+		this.addHeader(Component.translatable("group.neverket-minimap.minimap"));
 		this.list.addSmall(
 			this.toggleButton("visible", () -> this.config.visible, value -> this.config.visible = value),
 			this.cycleButton("corner", () -> enumValue("corner", this.config.corner), () -> this.config.corner = this.config.corner.next())
@@ -59,7 +63,7 @@ public final class SettingsScreen extends OptionsSubScreen {
 			this.minimapBorderColorWidget
 		);
 
-		this.list.addHeader(Component.translatable("group.neverket-minimap.map_appearance"));
+		this.addHeader(Component.translatable("group.neverket-minimap.map_appearance"));
 		this.list.addSmall(
 			this.cycleButton("unknown", () -> enumValue("unknown", this.config.unknownTerrain), () -> this.config.unknownTerrain = this.config.unknownTerrain.next()),
 			this.cycleButton("map_lighting", () -> enumValue("map_lighting", this.config.mapLightingMode), () -> {
@@ -73,11 +77,11 @@ public final class SettingsScreen extends OptionsSubScreen {
 			this.nightDarknessWidget,
 			this.toggleButton("terrain_contours", () -> this.config.showTerrainContours, value -> this.config.showTerrainContours = value)
 		);
-		this.list.addBig(this.intSlider("terrain_contour_range", this.config.terrainContourRangeChunks, 2, 32, 1,
+		this.addBigWidget(this.intSlider("terrain_contour_range", this.config.terrainContourRangeChunks, 2, 32, 1,
 			value -> this.config.terrainContourRangeChunks = value,
 			value -> Component.translatable("value.neverket-minimap.chunks", value).getString()));
 
-		this.list.addHeader(Component.translatable("group.neverket-minimap.recording"));
+		this.addHeader(Component.translatable("group.neverket-minimap.recording"));
 		this.mapDetailWidget = this.cycleButton("map_detail_mode", () -> enumValue("map_detail_mode", this.config.mapDetailMode), () ->
 			this.config.mapDetailMode = this.config.mapDetailMode.next()
 		);
@@ -89,7 +93,7 @@ public final class SettingsScreen extends OptionsSubScreen {
 			this.mapDetailWidget
 		);
 
-		this.list.addHeader(Component.translatable("group.neverket-minimap.fullscreen"));
+		this.addHeader(Component.translatable("group.neverket-minimap.fullscreen"));
 		this.list.addSmall(
 			this.toggleButton("fullscreen", () -> this.config.fullscreenEnabled, value -> this.config.fullscreenEnabled = value),
 			this.toggleButton("pause_fullscreen", () -> this.config.pauseOnFullscreenMap, value -> this.config.pauseOnFullscreenMap = value)
@@ -106,18 +110,18 @@ public final class SettingsScreen extends OptionsSubScreen {
 				value -> this.config.showRecordingAreaOnBiomeHighlight = value)
 		);
 
-		this.list.addHeader(Component.translatable("group.neverket-minimap.markers"));
-		this.list.addBig(this.navigationButton());
+		this.addHeader(Component.translatable("group.neverket-minimap.markers"));
+		this.addBigWidget(this.navigationButton());
 		this.updateDependentWidgets();
 	}
 
 	@Override
-	public boolean keyPressed(KeyEvent event) {
-		if (event.key() == GLFW.GLFW_KEY_N) {
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (keyCode == GLFW.GLFW_KEY_N) {
 			this.onClose();
 			return true;
 		}
-		return super.keyPressed(event);
+		return super.keyPressed(keyCode, scanCode, modifiers);
 	}
 
 	@Override
@@ -127,8 +131,7 @@ public final class SettingsScreen extends OptionsSubScreen {
 	}
 
 	@Override
-	public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-		this.extractBlurredBackground(graphics);
+	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		graphics.fill(0, 0, this.width, this.height, 0x72000000);
 	}
 
@@ -165,10 +168,21 @@ public final class SettingsScreen extends OptionsSubScreen {
 
 	private AbstractWidget navigationButton() {
 		Button button = Button.builder(Component.translatable("screen.neverket-minimap.markers_button"), pressed ->
-			this.minecraft.gui.setScreen(new MarkerSettingsScreen(this, this.config))
+			this.minecraft.setScreen(new MarkerSettingsScreen(this, this.config))
 		).build();
 		button.setTooltip(Tooltip.create(Component.translatable("description.neverket-minimap.markers_button")));
 		return button;
+	}
+
+	private void addHeader(Component title) {
+		Button header = Button.builder(title, button -> {}).size(310, 20).build();
+		header.active = false;
+		this.list.addSmall(header, null);
+	}
+
+	private void addBigWidget(AbstractWidget widget) {
+		widget.setWidth(310);
+		this.list.addSmall(widget, null);
 	}
 
 	private void updateDependentWidgets() {

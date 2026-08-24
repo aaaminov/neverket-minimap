@@ -1,0 +1,56 @@
+plugins {
+	id "net.neoforged.moddev"
+}
+
+base {
+	archivesName = "${rootProject.archives_base_name}-neoforge"
+}
+
+tasks.withType(org.gradle.api.tasks.bundling.AbstractArchiveTask).configureEach {
+	archiveVersion = "${project.version}-mc1.21.1"
+}
+
+sourceSets.main {
+	java.srcDirs(rootProject.file("src/main/java"), rootProject.file("src/client/java"))
+	resources.srcDir(rootProject.file("src/main/resources"))
+}
+
+neoForge {
+	version = rootProject.neoforge_1_21_1_version
+
+	runs {
+		client {
+			client()
+			gameDirectory = project.file("run")
+		}
+	}
+
+	mods {
+		"neverket_minimap" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+processResources {
+	def properties = [
+		version: project.version,
+		minecraft_version: rootProject.minecraft_1_21_1_version,
+		neoforge_version: rootProject.neoforge_1_21_1_version
+	]
+	inputs.properties properties
+	filesMatching("META-INF/neoforge.mods.toml") {
+		expand properties
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.release = 21
+	options.encoding = "UTF-8"
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}

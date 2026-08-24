@@ -1,0 +1,58 @@
+plugins {
+	id "net.fabricmc.fabric-loom-remap"
+}
+
+base {
+	archivesName = "${rootProject.archives_base_name}-fabric"
+}
+
+tasks.withType(org.gradle.api.tasks.bundling.AbstractArchiveTask).configureEach {
+	archiveVersion = "${project.version}-mc1.21.1"
+}
+
+loom {
+	mods {
+		"neverket-minimap" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+sourceSets.main {
+	java.srcDirs(rootProject.file("src/main/java"), rootProject.file("src/client/java"))
+	resources.srcDir(rootProject.file("src/main/resources"))
+}
+
+repositories {
+	maven {
+		name = "TerraformersMC"
+		url = "https://maven.terraformersmc.com/releases"
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${rootProject.minecraft_1_21_1_version}"
+	mappings loom.officialMojangMappings()
+	modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_1_21_1_version}"
+	include "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_1_21_1_version}"
+	modCompileOnly "com.terraformersmc:modmenu:${rootProject.modmenu_1_21_1_version}"
+}
+
+processResources {
+	inputs.property "version", project.version
+	filesMatching("fabric.mod.json") {
+		expand "version": project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.release = 21
+	options.encoding = "UTF-8"
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}

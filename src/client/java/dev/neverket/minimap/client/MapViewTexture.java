@@ -1,24 +1,14 @@
 package dev.neverket.minimap.client;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.neverket.minimap.atlas.MapAtlas;
 import dev.neverket.minimap.config.ModConfig.UnknownTerrain;
 import java.util.Arrays;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.navigation.ScreenRectangle;
-import net.minecraft.client.gui.render.TextureSetup;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.state.gui.GuiElementRenderState;
-import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FastColor;
 import net.minecraft.world.level.material.MapColor;
-import org.joml.Matrix3x2f;
-import org.joml.Matrix3x2fc;
-import org.jspecify.annotations.Nullable;
 
 public final class MapViewTexture implements AutoCloseable {
 	private static final int DEFAULT_OVERSCAN = 4;
@@ -30,7 +20,7 @@ public final class MapViewTexture implements AutoCloseable {
 	private static final int[] PACKED_MAP_COLORS = createPackedMapColors();
 
 	private final Minecraft minecraft;
-	private final Identifier id;
+	private final ResourceLocation id;
 	private final int viewWidth;
 	private final int viewHeight;
 	private final int centerSnapPixels;
@@ -66,11 +56,11 @@ public final class MapViewTexture implements AutoCloseable {
 	private float sourceU;
 	private float sourceV;
 
-	public MapViewTexture(Minecraft minecraft, Identifier id, int viewWidth, int viewHeight) {
+	public MapViewTexture(Minecraft minecraft, ResourceLocation id, int viewWidth, int viewHeight) {
 		this(minecraft, id, viewWidth, viewHeight, 0);
 	}
 
-	public MapViewTexture(Minecraft minecraft, Identifier id, int viewWidth, int viewHeight, int centerSnapPixels) {
+	public MapViewTexture(Minecraft minecraft, ResourceLocation id, int viewWidth, int viewHeight, int centerSnapPixels) {
 		this.minecraft = minecraft;
 		this.id = id;
 		this.viewWidth = viewWidth;
@@ -114,7 +104,7 @@ public final class MapViewTexture implements AutoCloseable {
 		boolean terrainContours = showTerrainContours
 			&& this.minecraft.level != null
 			&& this.minecraft.player != null
-			&& dimension.equals(this.minecraft.level.dimension().identifier().toString());
+			&& dimension.equals(this.minecraft.level.dimension().location().toString());
 		int effectiveContourRange = terrainContours
 			? Math.min(Math.min(terrainContourRangeChunks, this.minecraft.options.getEffectiveRenderDistance()), 32)
 			: 0;
@@ -182,7 +172,7 @@ public final class MapViewTexture implements AutoCloseable {
 					if (biomeSampler != null && biomeSampler.biomeAt(worldX, worldZ) != null) {
 						color = alphaOver(color, 0xFF000000 | biomeHighlightColor & 0xFFFFFF, biomeHighlightOpacity);
 					}
-					this.texture.getPixels().setPixel(x, y, color);
+					this.setPixel(x, y, color);
 					continue;
 				}
 
@@ -199,7 +189,7 @@ public final class MapViewTexture implements AutoCloseable {
 						color = lerpColor(unknownColor, terrainColor, fade);
 					}
 				}
-				this.texture.getPixels().setPixel(x, y, color);
+				this.setPixel(x, y, color);
 			}
 		}
 		if (terrainHeights != null) {
@@ -245,99 +235,47 @@ public final class MapViewTexture implements AutoCloseable {
 		this.terrainFadeBuffer = new byte[requiredSize];
 	}
 
-	public void blit(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int color) {
+	public void blit(GuiGraphics graphics, int x, int y, int width, int height, int color) {
 		this.ensureCreated();
-		graphics.blit(
-			RenderPipelines.GUI_TEXTURED, this.id, x, y, this.sourceU, this.sourceV, width, height,
-			this.viewWidth, this.viewHeight, this.textureWidth, this.textureHeight, color
-		);
+		setColor(graphics, color);
+		graphics.blit(this.id, x, y, width, height, this.sourceU, this.sourceV, this.viewWidth, this.viewHeight, this.textureWidth, this.textureHeight);
+		graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
 	}
 
 	/** Draws a screen-stable circular crop without baking the moving crop into the cached map texture. */
-	public void blitCircular(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int color) {
+	public void blitCircular(GuiGraphics graphics, int x, int y, int width, int height, int color) {
 		this.ensureCreated();
-		AbstractTexture renderedTexture = this.minecraft.getTextureManager().getTexture(this.id);
-		graphics.guiRenderState.addGuiElement(new CircularBlitRenderState(
-			TextureSetup.singleTexture(renderedTexture.getTextureView(), renderedTexture.getSampler()),
-			new Matrix3x2f(graphics.pose()), x, y, width, height, this.sourceU, this.sourceV,
-			this.textureWidth, this.textureHeight, color, graphics.scissorStack.peek()
-		));
-	}
-
-	private record CircularBlitRenderState(
-		TextureSetup textureSetup,
-		Matrix3x2fc pose,
-		int x,
-		int y,
-		int width,
-		int height,
-		float sourceU,
-		float sourceV,
-		int textureWidth,
-		int textureHeight,
-		int color,
-		@Nullable ScreenRectangle scissorArea,
-		@Nullable ScreenRectangle bounds
-	) implements GuiElementRenderState {
-		private CircularBlitRenderState(
-			TextureSetup textureSetup,
-			Matrix3x2fc pose,
-			int x,
-			int y,
-			int width,
-			int height,
-			float sourceU,
-			float sourceV,
-			int textureWidth,
-			int textureHeight,
-			int color,
-			@Nullable ScreenRectangle scissorArea
-		) {
-			this(
-				textureSetup, pose, x, y, width, height, sourceU, sourceV, textureWidth, textureHeight, color,
-				scissorArea, bounds(x, y, width, height, pose, scissorArea)
+		setColor(graphics, color);
+		double radius = Math.min(width, height) / 2.0;
+		double centerX = width / 2.0;
+		double centerY = height / 2.0;
+		for (int row = 0; row < height; row++) {
+			double dy = row + 0.5 - centerY;
+			double halfSpan = Math.sqrt(Math.max(0.0, radius * radius - dy * dy));
+			int left = Math.max(0, (int)Math.ceil(centerX - halfSpan - 0.5));
+			int right = Math.min(width, (int)Math.floor(centerX + halfSpan - 0.5) + 1);
+			if (left >= right) {
+				continue;
+			}
+			float sourceScaleX = (float)this.viewWidth / width;
+			float sourceScaleY = (float)this.viewHeight / height;
+			graphics.blit(
+				this.id, x + left, y + row, right - left, 1,
+				this.sourceU + left * sourceScaleX, this.sourceV + row * sourceScaleY,
+				Math.max(1, Math.round((right - left) * sourceScaleX)), Math.max(1, Math.round(sourceScaleY)),
+				this.textureWidth, this.textureHeight
 			);
 		}
+		graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+	}
 
-		@Override
-		public com.mojang.blaze3d.pipeline.RenderPipeline pipeline() {
-			return RenderPipelines.GUI_TEXTURED;
-		}
-
-		@Override
-		public void buildVertices(VertexConsumer vertices) {
-			double radius = Math.min(this.width, this.height) / 2.0;
-			double centerX = this.width / 2.0;
-			double centerY = this.height / 2.0;
-			for (int row = 0; row < this.height; row++) {
-				double dy = row + 0.5 - centerY;
-				double halfSpan = Math.sqrt(Math.max(0.0, radius * radius - dy * dy));
-				int left = Math.max(0, (int)Math.ceil(centerX - halfSpan - 0.5));
-				int right = Math.min(this.width, (int)Math.floor(centerX + halfSpan - 0.5) + 1);
-				if (left >= right) {
-					continue;
-				}
-				float u0 = (this.sourceU + left) / this.textureWidth;
-				float u1 = (this.sourceU + right) / this.textureWidth;
-				float v0 = (this.sourceV + row) / this.textureHeight;
-				float v1 = (this.sourceV + row + 1) / this.textureHeight;
-				int x0 = this.x + left;
-				int x1 = this.x + right;
-				int y0 = this.y + row;
-				int y1 = y0 + 1;
-				vertices.addVertexWith2DPose(this.pose, x0, y0).setUv(u0, v0).setColor(this.color);
-				vertices.addVertexWith2DPose(this.pose, x0, y1).setUv(u0, v1).setColor(this.color);
-				vertices.addVertexWith2DPose(this.pose, x1, y1).setUv(u1, v1).setColor(this.color);
-				vertices.addVertexWith2DPose(this.pose, x1, y0).setUv(u1, v0).setColor(this.color);
-			}
-		}
-
-		private static @Nullable ScreenRectangle bounds(
-			int x, int y, int width, int height, Matrix3x2fc pose, @Nullable ScreenRectangle scissorArea
-		) {
-			ScreenRectangle bounds = new ScreenRectangle(x, y, width, height).transformMaxBounds(pose);
-			return scissorArea == null ? bounds : scissorArea.intersection(bounds);
-		}
+	private static void setColor(GuiGraphics graphics, int color) {
+		graphics.setColor(
+			(color >> 16 & 0xFF) / 255.0F,
+			(color >> 8 & 0xFF) / 255.0F,
+			(color & 0xFF) / 255.0F,
+			(color >>> 24) / 255.0F
+		);
 	}
 
 	private void sampleTerrain(
@@ -397,7 +335,7 @@ public final class MapViewTexture implements AutoCloseable {
 				if (differentTerrain(kind, kinds[index - 1]) || differentTerrain(kind, kinds[index + 1])
 					|| differentTerrain(kind, kinds[index - this.textureWidth]) || differentTerrain(kind, kinds[index + this.textureWidth])) {
 					float fade = Byte.toUnsignedInt(fades[index]) / 255.0F;
-					this.texture.getPixels().setPixel(x, y, lerpColor(unknownColor, transitionColor, fade));
+					this.setPixel(x, y, lerpColor(unknownColor, transitionColor, fade));
 				}
 			}
 		}
@@ -417,8 +355,8 @@ public final class MapViewTexture implements AutoCloseable {
 				if ((right != NO_HEIGHT && kinds[index + 1] == kinds[index] && Math.floorDiv(right, 16) != band)
 					|| (down != NO_HEIGHT && kinds[index + this.textureWidth] == kinds[index] && Math.floorDiv(down, 16) != band)) {
 					float fade = Byte.toUnsignedInt(fades[index]) / 255.0F;
-					int base = this.texture.getPixels().getPixel(x, y);
-					this.texture.getPixels().setPixel(x, y, alphaOver(base, 0xFF090B0D, fade * 0.16F));
+					int base = this.getPixel(x, y);
+					this.setPixel(x, y, alphaOver(base, 0xFF090B0D, fade * 0.16F));
 				}
 			}
 		}
@@ -457,22 +395,31 @@ public final class MapViewTexture implements AutoCloseable {
 	private static int[] createPackedMapColors() {
 		int[] colors = new int[256];
 		for (int packed = 0; packed < colors.length; packed++) {
-			colors[packed] = MapColor.getColorFromPackedId(packed);
+			// Minecraft 1.21.1 returns native ABGR here; keep all minimap calculations in ARGB.
+			colors[packed] = FastColor.ABGR32.fromArgb32(MapColor.getColorFromPackedId(packed));
 		}
 		return colors;
 	}
 
+	private void setPixel(int x, int y, int argb) {
+		this.texture.getPixels().setPixelRGBA(x, y, FastColor.ABGR32.fromArgb32(argb));
+	}
+
+	private int getPixel(int x, int y) {
+		return FastColor.ABGR32.fromArgb32(this.texture.getPixels().getPixelRGBA(x, y));
+	}
+
 	private void ensureCreated() {
 		if (this.texture == null) {
-			this.texture = new CrispDynamicTexture(() -> "Neverket Minimap " + this.id, this.textureWidth, this.textureHeight);
+			this.texture = new CrispDynamicTexture(this.textureWidth, this.textureHeight);
 			this.minecraft.getTextureManager().register(this.id, this.texture);
 		}
 	}
 
 	private static final class CrispDynamicTexture extends DynamicTexture {
-		private CrispDynamicTexture(java.util.function.Supplier<String> label, int width, int height) {
-			super(label, width, height, true);
-			this.sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+		private CrispDynamicTexture(int width, int height) {
+			super(width, height, true);
+			this.setFilter(false, false);
 		}
 	}
 

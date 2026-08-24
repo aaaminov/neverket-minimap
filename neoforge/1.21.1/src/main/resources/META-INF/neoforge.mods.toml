@@ -1,0 +1,27 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+
+[[mods]]
+modId="neverket_minimap"
+version="${version}"
+displayName="Neverket Minimap"
+authors="Neverket Minimap contributors"
+description='''
+A client-side minimap assembled from vanilla maps and terrain loaded by the player.
+'''
+displayTest="IGNORE_ALL_VERSION"
+
+[[dependencies.neverket_minimap]]
+modId="neoforge"
+type="required"
+versionRange="[${neoforge_version},)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.neverket_minimap]]
+modId="minecraft"
+type="required"
+versionRange="[${minecraft_version}]"
+ordering="NONE"
+side="CLIENT"

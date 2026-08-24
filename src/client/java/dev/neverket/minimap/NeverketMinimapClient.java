@@ -11,21 +11,18 @@ import dev.neverket.minimap.marker.QuickMarker;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
-import net.fabricmc.loader.api.FabricLoader;
+import java.util.List;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.resources.Identifier;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public final class NeverketMinimapClient implements ClientModInitializer {
+/** Loader-independent client controller shared by Fabric and NeoForge. */
+public final class NeverketMinimapClient implements AutoCloseable {
 	public static final String MOD_ID = "neverket-minimap";
 	private static final String LEGACY_MOD_ID = "cartographer-minimap";
 	private static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
@@ -40,18 +37,15 @@ public final class NeverketMinimapClient implements ClientModInitializer {
 	private KeyMapping biomeHighlightKey;
 	private KeyMapping chunkDebugKey;
 	private boolean quickMarkerShortcutDown;
+	private boolean closed;
 
-	@Override
-	public void onInitializeClient() {
-		Minecraft minecraft = Minecraft.getInstance();
-		Path configRoot = FabricLoader.getInstance().getConfigDir();
+	public void initialize(Path configRoot) {
 		Path configDirectory = configRoot.resolve(MOD_ID);
 		migrateLegacyConfig(configRoot.resolve(LEGACY_MOD_ID), configDirectory);
 		this.config = ModConfig.load(configDirectory.resolve("config.json"));
 		this.session = new WorldSession(configDirectory.resolve("worlds"), LOGGER, this.config);
-		this.renderer = new MinimapRenderer(minecraft, this.session, this.config);
 
-		KeyMapping.Category category = KeyMapping.Category.register(id("controls"));
+		String category = "key.category." + MOD_ID + ".controls";
 		this.toggleKey = register("toggle", GLFW.GLFW_KEY_H, category);
 		this.zoomKey = register("zoom", GLFW.GLFW_KEY_EQUAL, category);
 		this.fullscreenKey = register("fullscreen", GLFW.GLFW_KEY_M, category);
@@ -59,17 +53,19 @@ public final class NeverketMinimapClient implements ClientModInitializer {
 		this.biomeHighlightKey = register("biome_highlight", GLFW.GLFW_KEY_SPACE, category);
 		this.chunkDebugKey = register("chunk_debug", GLFW.GLFW_KEY_LEFT_CONTROL, category);
 
-		ClientTickEvents.END_CLIENT_TICK.register(this::tick);
-		HudElementRegistry.attachElementBefore(VanillaHudElements.HOTBAR, id("minimap"), this.renderer::render);
-		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> this.close());
 		LOGGER.info("Neverket Minimap initialized");
 	}
 
-	private void tick(Minecraft minecraft) {
+	public List<KeyMapping> keyMappings() {
+		return List.of(this.toggleKey, this.zoomKey, this.fullscreenKey, this.settingsKey, this.biomeHighlightKey, this.chunkDebugKey);
+	}
+
+	public void tick(Minecraft minecraft) {
 		this.session.tick(minecraft);
-		boolean controlDown = InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_LEFT_CONTROL)
-			|| InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_RIGHT_CONTROL);
-		boolean quickMarkerShortcut = controlDown && InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_M);
+		long window = minecraft.getWindow().getWindow();
+		boolean controlDown = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_CONTROL)
+			|| InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_CONTROL);
+		boolean quickMarkerShortcut = controlDown && InputConstants.isKeyDown(window, GLFW.GLFW_KEY_M);
 		while (this.toggleKey.consumeClick()) {
 			this.config.visible = !this.config.visible;
 			this.config.changed();
@@ -80,23 +76,23 @@ public final class NeverketMinimapClient implements ClientModInitializer {
 		}
 		while (this.fullscreenKey.consumeClick()) {
 			if (!controlDown && this.config.fullscreenEnabled && minecraft.level != null) {
-				minecraft.gui.setScreen(minecraft.gui.screen() instanceof FullscreenMapScreen
+				minecraft.setScreen(minecraft.screen instanceof FullscreenMapScreen
 					? null
 					: new FullscreenMapScreen(this.session, this.config, this.biomeHighlightKey, this.chunkDebugKey));
 			}
 		}
 		while (this.settingsKey.consumeClick()) {
-			boolean settingsOpen = minecraft.gui.screen() instanceof SettingsScreen
-				|| minecraft.gui.screen() instanceof MarkerSettingsScreen;
-			minecraft.gui.setScreen(settingsOpen ? null : new SettingsScreen(this.config));
+			boolean settingsOpen = minecraft.screen instanceof SettingsScreen
+				|| minecraft.screen instanceof MarkerSettingsScreen;
+			minecraft.setScreen(settingsOpen ? null : new SettingsScreen(this.config));
 		}
-		if (quickMarkerShortcut && !this.quickMarkerShortcutDown && minecraft.gui.screen() == null
+		if (quickMarkerShortcut && !this.quickMarkerShortcutDown && minecraft.screen == null
 			&& minecraft.player != null && minecraft.level != null) {
 			if (this.session.atlas().quickMarker().isPresent()) {
 				this.session.atlas().removeQuickMarker();
 			} else {
 				this.session.atlas().putQuickMarker(new QuickMarker(
-					minecraft.level.dimension().identifier().toString(),
+					minecraft.level.dimension().location().toString(),
 					(int)Math.floor(minecraft.player.getX()),
 					(int)Math.floor(minecraft.player.getZ()),
 					System.currentTimeMillis()
@@ -107,18 +103,36 @@ public final class NeverketMinimapClient implements ClientModInitializer {
 		this.quickMarkerShortcutDown = quickMarkerShortcut;
 	}
 
-	private void close() {
+	public void render(GuiGraphics graphics, DeltaTracker deltaTracker) {
+		if (this.renderer == null) {
+			Minecraft minecraft = Minecraft.getInstance();
+			if (minecraft == null) {
+				return;
+			}
+			this.renderer = new MinimapRenderer(minecraft, this.session, this.config);
+		}
+		this.renderer.render(graphics, deltaTracker);
+	}
+
+	public Screen createSettingsScreen(Screen parent) {
+		return new SettingsScreen(parent, this.config);
+	}
+
+	@Override
+	public void close() {
+		if (this.closed) {
+			return;
+		}
+		this.closed = true;
 		this.session.close();
-		this.renderer.close();
+		if (this.renderer != null) {
+			this.renderer.close();
+		}
 		this.config.save();
 	}
 
-	private static KeyMapping register(String name, int key, KeyMapping.Category category) {
-		return KeyMappingHelper.registerKeyMapping(new KeyMapping("key." + MOD_ID + "." + name, InputConstants.Type.KEYSYM, key, category));
-	}
-
-	private static Identifier id(String path) {
-		return Identifier.fromNamespaceAndPath(MOD_ID, path);
+	private static KeyMapping register(String name, int key, String category) {
+		return new KeyMapping("key." + MOD_ID + "." + name, InputConstants.Type.KEYSYM, key, category);
 	}
 
 	private static void migrateLegacyConfig(Path legacyDirectory, Path configDirectory) {

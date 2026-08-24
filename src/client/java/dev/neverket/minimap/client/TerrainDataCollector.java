@@ -74,7 +74,7 @@ public final class TerrainDataCollector {
 			return;
 		}
 		ClientLevel level = minecraft.level;
-		String currentDimension = level.dimension().identifier().toString();
+		String currentDimension = level.dimension().location().toString();
 		int playerChunkX = Math.floorDiv((int)Math.floor(minecraft.player.getX()), 16);
 		int playerChunkZ = Math.floorDiv((int)Math.floor(minecraft.player.getZ()), 16);
 		int range = recordingRangeChunks(minecraft);
@@ -468,7 +468,7 @@ public final class TerrainDataCollector {
 				position.set(worldX, height, worldZ);
 				biomes[quartX + quartZ * 4] = level.getBiome(position)
 					.unwrapKey()
-					.map(key -> key.identifier().toString())
+					.map(key -> key.location().toString())
 					.orElse("");
 			}
 		}
@@ -534,7 +534,7 @@ public final class TerrainDataCollector {
 		int y = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, localX, localZ);
 		MapColor mapColor = MapColor.NONE;
 		BlockState state = null;
-		while (y >= chunk.getMinY() && mapColor == MapColor.NONE) {
+		while (y >= chunk.getMinBuildHeight() && mapColor == MapColor.NONE) {
 			position.set(worldX, y, worldZ);
 			state = chunk.getBlockState(position);
 			mapColor = state.getMapColor(chunk, position);
@@ -549,7 +549,7 @@ public final class TerrainDataCollector {
 			do {
 				depthPosition.set(worldX, depthY--, worldZ);
 				waterDepth++;
-			} while (depthY > chunk.getMinY() && !chunk.getBlockState(depthPosition).getFluidState().isEmpty());
+			} while (depthY > chunk.getMinBuildHeight() && !chunk.getBlockState(depthPosition).getFluidState().isEmpty());
 			if (!state.isFaceSturdy(chunk, position, Direction.UP)) {
 				state = state.getFluidState().createLegacyBlock();
 				mapColor = state.getMapColor(chunk, position);
