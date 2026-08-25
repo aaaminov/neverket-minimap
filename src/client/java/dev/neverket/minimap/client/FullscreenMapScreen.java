@@ -126,7 +126,9 @@ public final class FullscreenMapScreen extends Screen {
 		);
 		boolean viewingCurrentDimension = this.minecraft.level != null
 			&& this.dimension.equals(this.minecraft.level.dimension().location().toString());
-		int mapTint = viewingCurrentDimension ? MinimapRenderer.mapTint(this.minecraft, this.config, 1.0F) : 0xFFFFFFFF;
+		int mapTint = viewingCurrentDimension
+			? MinimapRenderer.mapTint(this.minecraft, this.config, 1.0F, partialTick)
+			: 0xFFFFFFFF;
 		this.viewTexture.blit(graphics, mapX, mapY, mapWidth, mapHeight, mapTint);
 		this.drawGrid(graphics, mapX, mapY, mapWidth, mapHeight);
 		this.drawRecordingAreaBorder(graphics, mapX, mapY, mapWidth, mapHeight, highlightKnownBiomes);
@@ -150,8 +152,16 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-		graphics.fill(0, 0, this.width, this.height, 0x78000000);
-		// Flush the translucent backdrop before the separately batched map texture.
+		int mapLeft = Math.min(MAP_MARGIN, this.width);
+		int mapTop = Math.min(MAP_TOP, this.height);
+		int mapRight = Math.max(mapLeft, this.width - MAP_MARGIN);
+		int mapBottom = Math.max(mapTop, this.height - MAP_BOTTOM);
+		// Never place the fullscreen backdrop over the map rectangle. Older
+		// GuiGraphics implementations can submit this batch after the texture.
+		graphics.fill(0, 0, this.width, mapTop, 0x78000000);
+		graphics.fill(0, mapBottom, this.width, this.height, 0x78000000);
+		graphics.fill(0, mapTop, mapLeft, mapBottom, 0x78000000);
+		graphics.fill(mapRight, mapTop, this.width, mapBottom, 0x78000000);
 		graphics.flush();
 	}
 

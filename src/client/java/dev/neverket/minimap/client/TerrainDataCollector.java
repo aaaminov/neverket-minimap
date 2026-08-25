@@ -20,20 +20,20 @@ import net.minecraft.world.level.material.MapColor;
 /** Incrementally records surface colors and biome quart samples from chunks already loaded by the client. */
 public final class TerrainDataCollector {
 	private static final int MAX_RANGE_CHUNKS = 32;
-	private static final int MAX_SCAN_ATTEMPTS_PER_TICK = 128;
-	private static final int MAX_DETAILED_DISCOVERIES_PER_TICK = 2;
-	private static final int MAX_VANILLA_STRIPE_DISCOVERIES_PER_TICK = 4;
+	private static final int MAX_SCAN_ATTEMPTS_PER_TICK = 512;
+	private static final int MAX_DETAILED_DISCOVERIES_PER_TICK = 8;
+	private static final int MAX_VANILLA_STRIPE_DISCOVERIES_PER_TICK = 32;
 	private static final int VANILLA_ACTIVE_RADIUS_CHUNKS = 8;
-	private static final long DETAILED_UPDATE_BUDGET_NANOS = 1_000_000L;
+	private static final long DETAILED_UPDATE_BUDGET_NANOS = 4_000_000L;
 	private static final int DISCOVERY_RESCAN_INTERVAL_TICKS = 40;
 	private static final int PLAYER_REFRESH_INTERVAL_TICKS = 5;
 	private static final int NEARBY_REFRESH_INTERVAL_TICKS = 3;
 	private static final int BACKGROUND_REFRESH_INTERVAL_TICKS = 20;
-	private static final int MAX_REFRESH_ATTEMPTS_PER_TICK = 16;
+	private static final int MAX_REFRESH_ATTEMPTS_PER_TICK = 32;
 	private static final int CONTOUR_WARMUP_ATTEMPTS_PER_TICK = 2;
 	private static final int CONTOUR_DISCOVERY_CHUNKS_PER_TICK = 4;
 	private static final int CONTOUR_DISCOVERY_ATTEMPTS_PER_TICK = 32;
-	private static final long CONTOUR_DISCOVERY_BUDGET_NANOS = 750_000L;
+	private static final long CONTOUR_DISCOVERY_BUDGET_NANOS = 2_000_000L;
 	private static final int DEBUG_HISTORY_SIZE = 16;
 	private static final List<ChunkOffset> NEARBY_OFFSETS = List.of(
 		new ChunkOffset(0, -1), new ChunkOffset(1, 0), new ChunkOffset(0, 1), new ChunkOffset(-1, 0),

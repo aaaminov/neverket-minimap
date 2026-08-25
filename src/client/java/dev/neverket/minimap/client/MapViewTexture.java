@@ -1,6 +1,8 @@
 package dev.neverket.minimap.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import dev.neverket.minimap.atlas.MapAtlas;
+import dev.neverket.minimap.config.MapLighting;
 import dev.neverket.minimap.config.ModConfig.UnknownTerrain;
 import java.util.Arrays;
 import net.minecraft.client.Minecraft;
@@ -27,7 +29,9 @@ public final class MapViewTexture implements AutoCloseable {
 	private final int overscan;
 	private final int textureWidth;
 	private final int textureHeight;
+	private final int[] basePixels;
 	private CrispDynamicTexture texture;
+	private int uploadedTint = Integer.MIN_VALUE;
 	private String lastDimension;
 	private double lastSampleCenterX = Double.NaN;
 	private double lastSampleCenterZ = Double.NaN;
@@ -69,6 +73,7 @@ public final class MapViewTexture implements AutoCloseable {
 		this.overscan = Math.max(DEFAULT_OVERSCAN, centerSnapPixels + 1);
 		this.textureWidth = viewWidth + this.overscan * 2;
 		this.textureHeight = viewHeight + this.overscan * 2;
+		this.basePixels = new int[this.textureWidth * this.textureHeight];
 		this.sourceU = this.overscan;
 		this.sourceV = this.overscan;
 	}
@@ -196,7 +201,9 @@ public final class MapViewTexture implements AutoCloseable {
 			this.smoothTerrainBoundaries(terrainHeights, terrainKinds, terrainFade, unknown, unknownColor);
 			this.drawTerrainContours(terrainHeights, terrainKinds, terrainFade);
 		}
-		this.texture.upload();
+		// The 1.21.1 GUI paths do not apply GPU tint consistently. Invalidate the
+		// uploaded copy; blit() will upload these base pixels with the current tint.
+		this.uploadedTint = Integer.MIN_VALUE;
 
 		this.lastDimension = dimension;
 		this.lastSampleCenterX = sampleCenterX;
@@ -237,20 +244,26 @@ public final class MapViewTexture implements AutoCloseable {
 
 	public void blit(GuiGraphics graphics, int x, int y, int width, int height, int color) {
 		this.ensureCreated();
-		setColor(graphics, color);
-		graphics.blit(this.id, x, y, width, height, this.sourceU, this.sourceV, this.viewWidth, this.viewHeight, this.textureWidth, this.textureHeight);
-		// 1.21.1 batches GUI draws; flush while the tint is still active.
+		this.uploadTinted(color);
 		graphics.flush();
-		graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+		RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+		graphics.blit(
+			this.id, x, y, width, height, this.sourceU, this.sourceV,
+			this.viewWidth, this.viewHeight, this.textureWidth, this.textureHeight
+		);
 	}
 
 	/** Draws a screen-stable circular crop without baking the moving crop into the cached map texture. */
 	public void blitCircular(GuiGraphics graphics, int x, int y, int width, int height, int color) {
 		this.ensureCreated();
-		setColor(graphics, color);
+		this.uploadTinted(color);
+		graphics.flush();
+		RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
 		double radius = Math.min(width, height) / 2.0;
 		double centerX = width / 2.0;
 		double centerY = height / 2.0;
+		float sourceScaleX = (float)this.viewWidth / width;
+		float sourceScaleY = (float)this.viewHeight / height;
 		for (int row = 0; row < height; row++) {
 			double dy = row + 0.5 - centerY;
 			double halfSpan = Math.sqrt(Math.max(0.0, radius * radius - dy * dy));
@@ -259,8 +272,6 @@ public final class MapViewTexture implements AutoCloseable {
 			if (left >= right) {
 				continue;
 			}
-			float sourceScaleX = (float)this.viewWidth / width;
-			float sourceScaleY = (float)this.viewHeight / height;
 			graphics.blit(
 				this.id, x + left, y + row, right - left, 1,
 				this.sourceU + left * sourceScaleX, this.sourceV + row * sourceScaleY,
@@ -268,18 +279,21 @@ public final class MapViewTexture implements AutoCloseable {
 				this.textureWidth, this.textureHeight
 			);
 		}
-		// Keep the tint active until all circular rows have reached the GPU.
-		graphics.flush();
-		graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
 	}
 
-	private static void setColor(GuiGraphics graphics, int color) {
-		graphics.setColor(
-			(color >> 16 & 0xFF) / 255.0F,
-			(color >> 8 & 0xFF) / 255.0F,
-			(color & 0xFF) / 255.0F,
-			(color >>> 24) / 255.0F
-		);
+	private void uploadTinted(int tint) {
+		if (this.uploadedTint == tint) {
+			return;
+		}
+		for (int y = 0; y < this.textureHeight; y++) {
+			for (int x = 0; x < this.textureWidth; x++) {
+				int index = x + y * this.textureWidth;
+				int argb = MapLighting.applyTint(this.basePixels[index], tint);
+				this.texture.getPixels().setPixelRGBA(x, y, FastColor.ABGR32.fromArgb32(argb));
+			}
+		}
+		this.texture.upload();
+		this.uploadedTint = tint;
 	}
 
 	private void sampleTerrain(
@@ -406,11 +420,11 @@ public final class MapViewTexture implements AutoCloseable {
 	}
 
 	private void setPixel(int x, int y, int argb) {
-		this.texture.getPixels().setPixelRGBA(x, y, FastColor.ABGR32.fromArgb32(argb));
+		this.basePixels[x + y * this.textureWidth] = argb;
 	}
 
 	private int getPixel(int x, int y) {
-		return FastColor.ABGR32.fromArgb32(this.texture.getPixels().getPixelRGBA(x, y));
+		return this.basePixels[x + y * this.textureWidth];
 	}
 
 	private void ensureCreated() {
@@ -432,6 +446,7 @@ public final class MapViewTexture implements AutoCloseable {
 		if (this.texture != null) {
 			this.minecraft.getTextureManager().release(this.id);
 			this.texture = null;
+			this.uploadedTint = Integer.MIN_VALUE;
 		}
 	}
 }

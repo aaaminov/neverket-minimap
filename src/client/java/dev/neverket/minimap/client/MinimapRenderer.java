@@ -63,7 +63,7 @@ public final class MinimapRenderer implements AutoCloseable {
 			false, 0, 0.0F
 		);
 
-		int tint = mapTint(this.minecraft, this.config, this.config.opacity);
+		int tint = mapTint(this.minecraft, this.config, this.config.opacity, partialTick);
 		if (this.config.shape == ModConfig.Shape.CIRCLE) {
 			this.viewTexture.blitCircular(graphics, x, y, size, size, tint);
 		} else {
@@ -129,14 +129,14 @@ public final class MinimapRenderer implements AutoCloseable {
 			&& this.minecraft.player.getActiveEffects().stream().anyMatch(effect -> effect.isVisible() && effect.showIcon());
 	}
 
-	static int mapTint(Minecraft minecraft, ModConfig config, float opacity) {
+	static int mapTint(Minecraft minecraft, ModConfig config, float opacity, float partialTick) {
 		if (minecraft.level == null) {
 			return MapLighting.tint(config, opacity, 0, false, false);
 		}
-		return MapLighting.tint(
+		return MapLighting.tintFromSkyBrightness(
 			config,
 			opacity,
-			minecraft.level.getSkyDarken(),
+			minecraft.level.getSkyDarken(partialTick),
 			minecraft.level.dimensionType().hasSkyLight(),
 			minecraft.level.dimensionType().hasFixedTime()
 		);

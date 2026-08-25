@@ -33,4 +33,24 @@ class MapLightingTest {
 		ModConfig config = new ModConfig();
 		assertEquals(0xE6FFFFFF, MapLighting.tint(config, 0.9F, 0, true, false));
 	}
+
+	@Test
+	void minecraft1211SkyBrightnessIsConvertedToConfigurableDarkness() {
+		ModConfig config = new ModConfig();
+		config.mapLightingMode = ModConfig.MapLightingMode.DAY_NIGHT;
+		config.nightDarkness = 1.0F;
+
+		assertEquals(0xFFFFFFFF, MapLighting.tintFromSkyBrightness(config, 1.0F, 1.0F, true, false));
+		assertEquals(0xFF333333, MapLighting.tintFromSkyBrightness(config, 1.0F, 0.2F, true, false));
+
+		config.nightDarkness = 0.5F;
+		assertEquals(0xFF999999, MapLighting.tintFromSkyBrightness(config, 1.0F, 0.2F, true, false));
+	}
+
+	@Test
+	void appliesTheTintToArgbPixelsWithoutChangingColorOrder() {
+		assertEquals(0x80402010, MapLighting.applyTint(0xFF804020, 0x80808080));
+		assertEquals(0x00000000, MapLighting.applyTint(0x00ABCDEF, 0xFFFFFFFF));
+		assertEquals(0xFF123456, MapLighting.applyTint(0xFF123456, 0xFFFFFFFF));
+	}
 }

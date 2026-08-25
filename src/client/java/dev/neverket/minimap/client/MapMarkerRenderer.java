@@ -24,6 +24,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FastColor;
 import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraft.world.level.saveddata.maps.MapDecorationType;
 import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
@@ -268,7 +269,9 @@ public final class MapMarkerRenderer {
 			}
 			for (int y = 0; y < image.getHeight(); y++) {
 				for (int x = 0; x < image.getWidth(); x++) {
-					image.setPixelRGBA(x, y, recolorPixel(image.getPixelRGBA(x, y), source, palette));
+					// NativeImage uses native ABGR in 1.21.1; recoloring palettes are ARGB.
+					int argb = FastColor.ABGR32.fromArgb32(image.getPixelRGBA(x, y));
+					image.setPixelRGBA(x, y, FastColor.ABGR32.fromArgb32(recolorPixel(argb, source, palette)));
 				}
 			}
 			ResourceLocation texture = ResourceLocation.fromNamespaceAndPath("neverket-minimap", "generated/marker/" + specification);
