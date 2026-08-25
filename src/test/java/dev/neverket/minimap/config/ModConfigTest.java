@@ -23,6 +23,7 @@ class ModConfigTest {
 		assertEquals(1.0F, config.opacity);
 		assertEquals(8, config.zoom);
 		assertFalse(config.showCardinalDirections);
+		assertTrue(config.showPlayers);
 		assertTrue(config.showTerrainContours);
 		assertEquals(16, config.terrainContourRangeChunks);
 		assertEquals(ModConfig.RecordingMode.MAPS, config.recordingMode);

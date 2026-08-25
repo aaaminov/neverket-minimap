@@ -20,27 +20,16 @@ import net.minecraft.world.level.material.MapColor;
 /** Incrementally records surface colors and biome quart samples from chunks already loaded by the client. */
 public final class TerrainDataCollector {
 	private static final int MAX_RANGE_CHUNKS = 32;
-	private static final int MAX_SCAN_ATTEMPTS_PER_TICK = 512;
-	private static final int MAX_DETAILED_DISCOVERIES_PER_TICK = 8;
-	private static final int MAX_VANILLA_STRIPE_DISCOVERIES_PER_TICK = 32;
-	private static final int VANILLA_ACTIVE_RADIUS_CHUNKS = 8;
-	private static final long DETAILED_UPDATE_BUDGET_NANOS = 4_000_000L;
+	private static final int MAX_SCAN_ATTEMPTS_PER_TICK = 128;
+	private static final int MAX_CHUNK_UPDATES_PER_TICK = 2;
+	private static final long UPDATE_BUDGET_NANOS = 1_000_000L;
 	private static final int DISCOVERY_RESCAN_INTERVAL_TICKS = 40;
-	private static final int PLAYER_REFRESH_INTERVAL_TICKS = 5;
-	private static final int NEARBY_REFRESH_INTERVAL_TICKS = 3;
-	private static final int BACKGROUND_REFRESH_INTERVAL_TICKS = 20;
-	private static final int MAX_REFRESH_ATTEMPTS_PER_TICK = 32;
-	private static final int CONTOUR_WARMUP_ATTEMPTS_PER_TICK = 2;
-	private static final int CONTOUR_DISCOVERY_CHUNKS_PER_TICK = 4;
-	private static final int CONTOUR_DISCOVERY_ATTEMPTS_PER_TICK = 32;
-	private static final long CONTOUR_DISCOVERY_BUDGET_NANOS = 2_000_000L;
+	private static final int PLAYER_REFRESH_INTERVAL_TICKS = 20;
+	private static final int NEARBY_REFRESH_INTERVAL_TICKS = 10;
+	private static final int BACKGROUND_REFRESH_INTERVAL_TICKS = 40;
+	private static final int MAX_REFRESH_ATTEMPTS_PER_TICK = 16;
 	private static final int DEBUG_HISTORY_SIZE = 16;
 	private static final List<ChunkOffset> NEARBY_OFFSETS = List.of(
-		new ChunkOffset(0, -1), new ChunkOffset(1, 0), new ChunkOffset(0, 1), new ChunkOffset(-1, 0),
-		new ChunkOffset(1, -1), new ChunkOffset(1, 1), new ChunkOffset(-1, 1), new ChunkOffset(-1, -1)
-	);
-	private static final List<ChunkOffset> CONTOUR_WARMUP_OFFSETS = List.of(
-		new ChunkOffset(0, 0),
 		new ChunkOffset(0, -1), new ChunkOffset(1, 0), new ChunkOffset(0, 1), new ChunkOffset(-1, 0),
 		new ChunkOffset(1, -1), new ChunkOffset(1, 1), new ChunkOffset(-1, 1), new ChunkOffset(-1, -1)
 	);
@@ -50,9 +39,6 @@ public final class TerrainDataCollector {
 	private int scanIndex;
 	private int refreshIndex;
 	private int nearbyIndex;
-	private int contourWarmupIndex = CONTOUR_WARMUP_OFFSETS.size();
-	private int contourScanIndex;
-	private int ticksUntilContourRescan;
 	private int ticksUntilDiscoveryRescan;
 	private int ticksUntilPlayerRefresh;
 	private int ticksUntilNearbyRefresh;
@@ -63,9 +49,6 @@ public final class TerrainDataCollector {
 	private int contourRange;
 	private int scanRange = -1;
 	private List<ChunkOffset> scanOffsets = List.of();
-	private List<List<ChunkOffset>> vanillaStripes = vanillaStripes(0);
-	private int vanillaStripe = -1;
-	private int vanillaStripeCursor;
 	private final ArrayDeque<ChunkUpdate> recentUpdates = new ArrayDeque<>(DEBUG_HISTORY_SIZE);
 
 	public void tick(Minecraft minecraft, MapAtlas atlas, TerrainContourCache contours, ModConfig config) {
@@ -86,9 +69,6 @@ public final class TerrainDataCollector {
 		if (rangeChanged) {
 			this.scanRange = range;
 			this.scanOffsets = radialOffsets(range);
-			this.vanillaStripes = vanillaStripes(Math.min(range, VANILLA_ACTIVE_RADIUS_CHUNKS));
-			this.vanillaStripe = -1;
-			this.vanillaStripeCursor = 0;
 		}
 		if (worldChanged || rangeChanged) {
 			this.level = level;
@@ -109,19 +89,10 @@ public final class TerrainDataCollector {
 		boolean playerChunkChanged = playerChunkX != this.lastPlayerChunkX || playerChunkZ != this.lastPlayerChunkZ;
 		if (worldChanged || rangeChanged || contourRangeChanged || playerChunkChanged) {
 			contours.retainWithin(currentDimension, playerChunkX, playerChunkZ, this.contourRange);
-			if (worldChanged || rangeChanged || contourRangeChanged) {
-				this.contourScanIndex = 0;
-				this.ticksUntilContourRescan = 0;
-			}
 			if (playerChunkChanged) {
 				this.scanIndex = 0;
 				this.refreshIndex = 0;
 				this.nearbyIndex = 0;
-				this.vanillaStripe = -1;
-				this.vanillaStripeCursor = 0;
-				this.contourWarmupIndex = 0;
-				this.contourScanIndex = 0;
-				this.ticksUntilContourRescan = 0;
 				this.ticksUntilDiscoveryRescan = 0;
 				this.ticksUntilNearbyRefresh = 0;
 				this.currentFarRing = 0;
@@ -129,9 +100,6 @@ public final class TerrainDataCollector {
 			this.lastPlayerChunkX = playerChunkX;
 			this.lastPlayerChunkZ = playerChunkZ;
 		}
-		this.warmNearbyContours(level, contours, config, currentDimension, playerChunkX, playerChunkZ);
-		this.fillNearbyContours(level, contours, config, currentDimension, playerChunkX, playerChunkZ);
-
 		if (this.scanIndex >= this.scanOffsets.size()) {
 			if (this.ticksUntilDiscoveryRescan > 0) {
 				this.ticksUntilDiscoveryRescan--;
@@ -140,42 +108,33 @@ public final class TerrainDataCollector {
 			}
 		}
 		boolean discoverySweepActive = this.scanIndex < this.scanOffsets.size();
-		boolean sampled = this.tryRecord(
+		long updateDeadline = System.nanoTime() + UPDATE_BUDGET_NANOS;
+		int updates = this.tryRecord(
 			level, atlas, contours, config, currentDimension, playerChunkX, playerChunkZ, UpdateKind.DISCOVERY
-		);
+		) ? 1 : 0;
 		if (this.ticksUntilPlayerRefresh > 0) {
 			this.ticksUntilPlayerRefresh--;
 		}
-		if (!sampled && this.ticksUntilPlayerRefresh <= 0) {
+		if (updates < MAX_CHUNK_UPDATES_PER_TICK && System.nanoTime() < updateDeadline && this.ticksUntilPlayerRefresh <= 0) {
 			this.ticksUntilPlayerRefresh = PLAYER_REFRESH_INTERVAL_TICKS;
-			sampled = this.tryRecord(
+			if (this.tryRecord(
 				level, atlas, contours, config, currentDimension, playerChunkX, playerChunkZ, UpdateKind.PLAYER_REFRESH
-			);
+			)) updates++;
 		}
 		if (this.ticksUntilNearbyRefresh > 0) {
 			this.ticksUntilNearbyRefresh--;
 		}
-		if (!sampled && this.ticksUntilNearbyRefresh <= 0) {
+		if (updates < MAX_CHUNK_UPDATES_PER_TICK && System.nanoTime() < updateDeadline && this.ticksUntilNearbyRefresh <= 0) {
 			this.ticksUntilNearbyRefresh = NEARBY_REFRESH_INTERVAL_TICKS;
-			sampled = this.refreshNearbyChunk(
+			if (this.refreshNearbyChunk(
 				level, atlas, contours, config, currentDimension, playerChunkX, playerChunkZ
-			);
+			)) updates++;
 		}
-		boolean recordsDetailedTerrain = config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN
-			|| config.mapDetailMode == ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL;
-		long detailedUpdateDeadline = System.nanoTime() + DETAILED_UPDATE_BUDGET_NANOS;
-		if (recordsDetailedTerrain && this.fillVanillaLikeStripe(
-			level, atlas, contours, config, currentDimension, playerChunkX, playerChunkZ, detailedUpdateDeadline
-		)) {
-			sampled = true;
-		}
-		int discoveryLimit = recordsDetailedTerrain ? MAX_DETAILED_DISCOVERIES_PER_TICK : 1;
-		int discoveries = 0;
 		for (int attempts = 0;
 			attempts < MAX_SCAN_ATTEMPTS_PER_TICK
-				&& discoveries < discoveryLimit
+				&& updates < MAX_CHUNK_UPDATES_PER_TICK
 				&& this.scanIndex < this.scanOffsets.size()
-				&& System.nanoTime() < detailedUpdateDeadline;
+				&& System.nanoTime() < updateDeadline;
 			this.scanIndex++, attempts++) {
 			ChunkOffset offset = this.scanOffsets.get(this.scanIndex);
 			this.currentFarRing = offset.ring();
@@ -185,8 +144,7 @@ public final class TerrainDataCollector {
 				level, atlas, contours, config, currentDimension, chunkX, chunkZ, UpdateKind.DISCOVERY
 			);
 			if (discovered) {
-				discoveries++;
-				sampled = true;
+				updates++;
 			}
 		}
 		if (discoverySweepActive && this.scanIndex >= this.scanOffsets.size()) {
@@ -196,7 +154,7 @@ public final class TerrainDataCollector {
 		if (this.ticksUntilBackgroundRefresh > 0) {
 			this.ticksUntilBackgroundRefresh--;
 		}
-		if (!sampled && this.ticksUntilBackgroundRefresh <= 0) {
+		if (updates == 0 && this.ticksUntilBackgroundRefresh <= 0) {
 			this.ticksUntilBackgroundRefresh = BACKGROUND_REFRESH_INTERVAL_TICKS;
 			this.refreshNextLoadedChunk(level, atlas, contours, config, currentDimension, playerChunkX, playerChunkZ);
 		}
@@ -216,139 +174,6 @@ public final class TerrainDataCollector {
 
 	public int currentFarRing() {
 		return this.currentFarRing;
-	}
-
-	/**
-	 * Mirrors the vanilla filled-map cadence: one of sixteen vertical strips is visited per tick.
-	 * Unlike vanilla, only chunks already loaded by the client are eligible.
-	 */
-	private boolean fillVanillaLikeStripe(
-		ClientLevel level,
-		MapAtlas atlas,
-		TerrainContourCache contours,
-		ModConfig config,
-		String dimension,
-		int playerChunkX,
-		int playerChunkZ,
-		long deadline
-	) {
-		if (this.vanillaStripe < 0 || this.vanillaStripeCursor >= this.vanillaStripes.get(this.vanillaStripe).size()) {
-			for (int skipped = 0; skipped < 16; skipped++) {
-				this.vanillaStripe = (this.vanillaStripe + 1) & 15;
-				this.vanillaStripeCursor = 0;
-				if (!this.vanillaStripes.get(this.vanillaStripe).isEmpty()) {
-					break;
-				}
-			}
-		}
-
-		List<ChunkOffset> stripe = this.vanillaStripes.get(this.vanillaStripe);
-		int discoveries = 0;
-		while (this.vanillaStripeCursor < stripe.size()
-			&& discoveries < MAX_VANILLA_STRIPE_DISCOVERIES_PER_TICK
-			&& System.nanoTime() < deadline) {
-			ChunkOffset offset = stripe.get(this.vanillaStripeCursor++);
-			if (this.tryRecord(
-				level, atlas, contours, config, dimension,
-				playerChunkX + offset.x(), playerChunkZ + offset.z(), UpdateKind.DISCOVERY
-			)) {
-				discoveries++;
-			}
-		}
-		return discoveries > 0;
-	}
-
-	private void warmNearbyContours(
-		ClientLevel level,
-		TerrainContourCache contours,
-		ModConfig config,
-		String dimension,
-		int playerChunkX,
-		int playerChunkZ
-	) {
-		if (!config.showTerrainContours || config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN) {
-			this.contourWarmupIndex = CONTOUR_WARMUP_OFFSETS.size();
-			return;
-		}
-		for (int attempts = 0;
-			attempts < CONTOUR_WARMUP_ATTEMPTS_PER_TICK && this.contourWarmupIndex < CONTOUR_WARMUP_OFFSETS.size();
-			attempts++, this.contourWarmupIndex++) {
-			ChunkOffset offset = CONTOUR_WARMUP_OFFSETS.get(this.contourWarmupIndex);
-			if (!RecordingArea.containsChunkOffset(offset.x(), offset.z(), this.contourRange)) {
-				continue;
-			}
-			int chunkX = playerChunkX + offset.x();
-			int chunkZ = playerChunkZ + offset.z();
-			LevelChunk chunk = level.getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
-			if (chunk == null) {
-				continue;
-			}
-			long startedAt = System.nanoTime();
-			ContourSamples samples = this.sampleContourChunk(chunk);
-			contours.putChunk(dimension, chunkX, chunkZ, samples.heights(), samples.kinds());
-			this.recordUpdate(new ChunkUpdate(
-				dimension, chunkX, chunkZ,
-				offset.x() == 0 && offset.z() == 0 ? UpdateKind.PLAYER_REFRESH : UpdateKind.NEARBY_REFRESH,
-				System.nanoTime() - startedAt, level.getGameTime()
-			));
-		}
-	}
-
-	private void fillNearbyContours(
-		ClientLevel level,
-		TerrainContourCache contours,
-		ModConfig config,
-		String dimension,
-		int playerChunkX,
-		int playerChunkZ
-	) {
-		if (!config.showTerrainContours || config.recordingMode == ModConfig.RecordingMode.EXPLORED_TERRAIN) {
-			return;
-		}
-		if (this.contourScanIndex >= this.scanOffsets.size()) {
-			if (this.ticksUntilContourRescan > 0) {
-				this.ticksUntilContourRescan--;
-				return;
-			}
-			this.contourScanIndex = 0;
-		}
-
-		long startedAt = System.nanoTime();
-		int recorded = 0;
-		int attempts = 0;
-		while (recorded < CONTOUR_DISCOVERY_CHUNKS_PER_TICK
-			&& attempts < CONTOUR_DISCOVERY_ATTEMPTS_PER_TICK
-			&& this.contourScanIndex < this.scanOffsets.size()) {
-			ChunkOffset offset = this.scanOffsets.get(this.contourScanIndex++);
-			attempts++;
-			if (!RecordingArea.containsChunkOffset(offset.x(), offset.z(), this.contourRange)) {
-				this.contourScanIndex = this.scanOffsets.size();
-				break;
-			}
-			int chunkX = playerChunkX + offset.x();
-			int chunkZ = playerChunkZ + offset.z();
-			if (contours.hasChunk(dimension, chunkX, chunkZ)) {
-				continue;
-			}
-			LevelChunk chunk = level.getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
-			if (chunk == null) {
-				continue;
-			}
-			long chunkStartedAt = System.nanoTime();
-			ContourSamples samples = this.sampleContourChunk(chunk);
-			contours.putChunk(dimension, chunkX, chunkZ, samples.heights(), samples.kinds());
-			this.recordUpdate(new ChunkUpdate(
-				dimension, chunkX, chunkZ, UpdateKind.DISCOVERY,
-				System.nanoTime() - chunkStartedAt, level.getGameTime()
-			));
-			recorded++;
-			if (System.nanoTime() - startedAt >= CONTOUR_DISCOVERY_BUDGET_NANOS) {
-				break;
-			}
-		}
-		if (this.contourScanIndex >= this.scanOffsets.size()) {
-			this.ticksUntilContourRescan = DISCOVERY_RESCAN_INTERVAL_TICKS;
-		}
 	}
 
 	private boolean refreshNearbyChunk(
@@ -420,7 +245,7 @@ public final class TerrainDataCollector {
 		boolean insideContourRange = RecordingArea.containsChunkOffset(
 			chunkX - this.lastPlayerChunkX, chunkZ - this.lastPlayerChunkZ, this.contourRange
 		);
-		boolean needsContours = config.showTerrainContours && !recordTerrain && insideContourRange
+		boolean needsContours = config.showTerrainContours && insideContourRange
 			&& (updateKind.refreshExisting() || !contours.hasChunk(dimension, chunkX, chunkZ));
 		if (!needsTerrain && !needsBiomes && !needsContours) {
 			return false;
@@ -430,15 +255,17 @@ public final class TerrainDataCollector {
 			return false;
 		}
 		long startedAt = System.nanoTime();
-		if (needsContours) {
-			ContourSamples samples = this.sampleContourChunk(chunk);
-			contours.putChunk(dimension, chunkX, chunkZ, samples.heights(), samples.kinds());
-		}
 		if (needsBiomes) {
 			atlas.putBiomeChunk(dimension, chunkX, chunkZ, this.sampleBiomeChunk(level, chunk, chunkX, chunkZ));
 		}
-		if (needsTerrain) {
-			atlas.putTerrainChunk(dimension, chunkX, chunkZ, this.sampleChunk(level, chunk, chunkX, chunkZ));
+		if (needsTerrain || needsContours) {
+			SurfaceChunkSamples samples = this.sampleSurfaceChunk(level, chunk, chunkX, chunkZ);
+			if (needsContours) {
+				contours.putChunk(dimension, chunkX, chunkZ, samples.heights(), samples.kinds());
+			}
+			if (needsTerrain) {
+				atlas.putTerrainChunk(dimension, chunkX, chunkZ, samples.colors());
+			}
 		}
 		this.recordUpdate(new ChunkUpdate(
 			dimension, chunkX, chunkZ, updateKind, System.nanoTime() - startedAt, level.getGameTime()
@@ -475,24 +302,10 @@ public final class TerrainDataCollector {
 		return biomes;
 	}
 
-	private ContourSamples sampleContourChunk(LevelChunk chunk) {
+	private SurfaceChunkSamples sampleSurfaceChunk(ClientLevel level, LevelChunk chunk, int chunkX, int chunkZ) {
+		byte[] colors = new byte[16 * 16];
 		short[] heights = new short[16 * 16];
 		byte[] kinds = new byte[16 * 16];
-		for (int z = 0; z < 16; z++) {
-			for (int x = 0; x < 16; x++) {
-				int index = x + z * 16;
-				int height = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) + 1;
-				heights[index] = (short)height;
-				kinds[index] = chunk.getFluidState(x, height - 1, z).is(net.minecraft.tags.FluidTags.WATER)
-					? TerrainContourCache.WATER
-					: TerrainContourCache.LAND;
-			}
-		}
-		return new ContourSamples(heights, kinds);
-	}
-
-	private byte[] sampleChunk(ClientLevel level, LevelChunk chunk, int chunkX, int chunkZ) {
-		byte[] colors = new byte[16 * 16];
 		BlockPos.MutableBlockPos position = new BlockPos.MutableBlockPos();
 		BlockPos.MutableBlockPos depthPosition = new BlockPos.MutableBlockPos();
 		SurfaceSample sample = new SurfaceSample();
@@ -509,16 +322,19 @@ public final class TerrainDataCollector {
 				int worldX = chunkX * 16 + x;
 				int worldZ = chunkZ * 16 + z;
 				this.sampleSurface(chunk, worldX, worldZ, x, z, position, depthPosition, sample);
+				int index = x + z * 16;
+				heights[index] = (short)sample.height;
+				kinds[index] = sample.waterDepth > 0 ? TerrainContourCache.WATER : TerrainContourCache.LAND;
 				if (sample.mapColor != MapColor.NONE) {
 					MapColor.Brightness brightness = sample.mapColor == MapColor.WATER
 						? waterBrightness(sample.waterDepth, worldX, worldZ)
 						: terrainBrightness(sample.height, previousHeight, worldX, worldZ);
-					colors[x + z * 16] = sample.mapColor.getPackedId(brightness);
+					colors[index] = sample.mapColor.getPackedId(brightness);
 				}
 				previousHeight = sample.height;
 			}
 		}
-		return colors;
+		return new SurfaceChunkSamples(colors, heights, kinds);
 	}
 
 	private void sampleSurface(
@@ -585,9 +401,6 @@ public final class TerrainDataCollector {
 		this.scanIndex = 0;
 		this.refreshIndex = 0;
 		this.nearbyIndex = 0;
-		this.contourWarmupIndex = CONTOUR_WARMUP_OFFSETS.size();
-		this.contourScanIndex = 0;
-		this.ticksUntilContourRescan = 0;
 		this.ticksUntilDiscoveryRescan = 0;
 		this.ticksUntilPlayerRefresh = 0;
 		this.ticksUntilNearbyRefresh = 0;
@@ -596,8 +409,6 @@ public final class TerrainDataCollector {
 		this.lastPlayerChunkX = Integer.MIN_VALUE;
 		this.lastPlayerChunkZ = Integer.MIN_VALUE;
 		this.contourRange = 0;
-		this.vanillaStripe = -1;
-		this.vanillaStripeCursor = 0;
 		this.recentUpdates.clear();
 	}
 
@@ -614,21 +425,6 @@ public final class TerrainDataCollector {
 			.thenComparingInt(ChunkOffset::z)
 			.thenComparingInt(ChunkOffset::x));
 		return List.copyOf(offsets);
-	}
-
-	private static List<List<ChunkOffset>> vanillaStripes(int range) {
-		List<List<ChunkOffset>> stripes = new ArrayList<>(16);
-		for (int index = 0; index < 16; index++) {
-			stripes.add(new ArrayList<>());
-		}
-		for (ChunkOffset offset : radialOffsets(range)) {
-			stripes.get(Math.floorMod(offset.x(), 16)).add(offset);
-		}
-		List<List<ChunkOffset>> result = new ArrayList<>(16);
-		for (List<ChunkOffset> stripe : stripes) {
-			result.add(List.copyOf(stripe));
-		}
-		return List.copyOf(result);
 	}
 
 	private record ChunkOffset(int x, int z) {
@@ -671,6 +467,6 @@ public final class TerrainDataCollector {
 		private MapColor mapColor = MapColor.NONE;
 	}
 
-	private record ContourSamples(short[] heights, byte[] kinds) {
+	private record SurfaceChunkSamples(byte[] colors, short[] heights, byte[] kinds) {
 	}
 }

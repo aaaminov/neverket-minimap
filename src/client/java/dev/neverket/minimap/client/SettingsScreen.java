@@ -63,6 +63,7 @@ public final class SettingsScreen extends OptionsSubScreen {
 			}),
 			this.minimapBorderColorWidget
 		);
+		this.addBigWidget(this.toggleButton("players", () -> this.config.showPlayers, value -> this.config.showPlayers = value));
 
 		this.addHeader(Component.translatable("group.neverket-minimap.map_appearance"));
 		this.list.addSmall(

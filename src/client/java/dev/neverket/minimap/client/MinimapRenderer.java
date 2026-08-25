@@ -83,6 +83,7 @@ public final class MinimapRenderer implements AutoCloseable {
 			x, y, size, size, this.config.shape == ModConfig.Shape.CIRCLE,
 			Integer.MIN_VALUE, Integer.MIN_VALUE, false
 		);
+		this.drawOtherPlayers(graphics, playerPosition.x, playerPosition.z, x, y, size, partialTick);
 		drawPlayerArrow(graphics, x + size / 2, y + size / 2, this.minecraft.player.getViewYRot(partialTick));
 
 		if (this.config.showCardinalDirections) {
@@ -95,6 +96,28 @@ public final class MinimapRenderer implements AutoCloseable {
 			String coordinates = (int)Math.floor(playerPosition.x) + ", " + (int)Math.floor(playerPosition.z);
 			int coordinatesY = y + size + (this.config.showCardinalDirections ? 17 : 5);
 			graphics.drawCenteredString(this.minecraft.font, coordinates, x + size / 2, coordinatesY, 0xFFFFFFFF);
+		}
+	}
+
+	private void drawOtherPlayers(
+		GuiGraphics graphics, double centerX, double centerZ, int mapX, int mapY, int size, float partialTick
+	) {
+		if (!this.config.showPlayers || this.minecraft.level == null || this.minecraft.player == null) {
+			return;
+		}
+		double radius = size / 2.0 - 4.0;
+		for (var player : this.minecraft.level.players()) {
+			if (player == this.minecraft.player) {
+				continue;
+			}
+			var position = player.getPosition(partialTick);
+			double dx = (position.x - centerX) / this.config.zoom;
+			double dz = (position.z - centerZ) / this.config.zoom;
+			if (Math.abs(dx) > radius || Math.abs(dz) > radius
+				|| (this.config.shape == ModConfig.Shape.CIRCLE && dx * dx + dz * dz > radius * radius)) {
+				continue;
+			}
+			drawOtherPlayerMarker(graphics, (int)Math.round(mapX + size / 2.0 + dx), (int)Math.round(mapY + size / 2.0 + dz));
 		}
 	}
 
@@ -150,6 +173,12 @@ public final class MinimapRenderer implements AutoCloseable {
 		graphics.pose().mulPose(Axis.ZP.rotationDegrees(yawDegrees + 180.0F));
 		graphics.blit(-5, -5, 0, 10, 10, sprite);
 		graphics.pose().popPose();
+	}
+
+	static void drawOtherPlayerMarker(GuiGraphics graphics, int centerX, int centerY) {
+		graphics.fill(centerX - 1, centerY - 4, centerX + 2, centerY + 5, 0xFF55DDE0);
+		graphics.fill(centerX - 4, centerY - 1, centerX + 5, centerY + 2, 0xFF55DDE0);
+		graphics.fill(centerX, centerY, centerX + 1, centerY + 1, 0xFFFFFFFF);
 	}
 
 	private static void drawBorder(GuiGraphics graphics, int x, int y, int size, int color) {

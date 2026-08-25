@@ -5,6 +5,7 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.neverket.minimap.atlas.MapAtlas;
 import dev.neverket.minimap.config.ModConfig.UnknownTerrain;
+import dev.neverket.minimap.config.PackedMapColor;
 import dev.neverket.minimap.config.TerrainFogStyle;
 import java.util.Arrays;
 import net.minecraft.client.Minecraft;
@@ -23,7 +24,7 @@ import org.jspecify.annotations.Nullable;
 
 public final class MapViewTexture implements AutoCloseable {
 	private static final int DEFAULT_OVERSCAN = 4;
-	private static final long MINIMAP_REFRESH_INTERVAL_NANOS = 100_000_000L;
+	private static final long MINIMAP_REFRESH_INTERVAL_NANOS = 250_000_000L;
 	private static final long FULLSCREEN_REFRESH_INTERVAL_NANOS = 350_000_000L;
 	private static final int NO_HEIGHT = Integer.MIN_VALUE;
 	private static final byte LAND = 1;
@@ -460,7 +461,8 @@ public final class MapViewTexture implements AutoCloseable {
 	private static int[] createPackedMapColors() {
 		int[] colors = new int[256];
 		for (int packed = 0; packed < colors.length; packed++) {
-			colors[packed] = MapColor.getColorFromPackedId(packed);
+			MapColor mapColor = MapColor.byId(packed >> 2);
+			colors[packed] = PackedMapColor.argb(mapColor.col, packed & 3);
 		}
 		return colors;
 	}

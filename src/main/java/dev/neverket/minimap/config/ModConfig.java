@@ -19,6 +19,7 @@ public final class ModConfig {
 	public int zoom = 8;
 	public boolean showCoordinates = true;
 	public boolean showCardinalDirections = false;
+	public boolean showPlayers = true;
 	public boolean showMinimapBorder = true;
 	public MinimapBorderColor minimapBorderColor = MinimapBorderColor.BLACK;
 	public UnknownTerrain unknownTerrain = UnknownTerrain.DARK;

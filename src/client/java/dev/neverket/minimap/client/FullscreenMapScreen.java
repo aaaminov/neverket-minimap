@@ -138,7 +138,7 @@ public final class FullscreenMapScreen extends Screen {
 			this.centerX, this.centerZ, this.zoom,
 			mapX, mapY, mapWidth, mapHeight, false, mouseX, mouseY, true
 		);
-		this.drawPlayer(graphics, mapX, mapY, mapWidth, mapHeight, partialTick);
+		this.drawPlayers(graphics, mapX, mapY, mapWidth, mapHeight, partialTick);
 		this.drawBorder(graphics, mapX, mapY, mapWidth, mapHeight);
 		this.drawStatusBar(graphics, mouseX, mouseY, mapX, mapY, mapWidth, mapHeight);
 		if (showChunkDebug) {
@@ -319,16 +319,25 @@ public final class FullscreenMapScreen extends Screen {
 		graphics.disableScissor();
 	}
 
-	private void drawPlayer(GuiGraphics graphics, int mapX, int mapY, int mapWidth, int mapHeight, float partialTick) {
+	private void drawPlayers(GuiGraphics graphics, int mapX, int mapY, int mapWidth, int mapHeight, float partialTick) {
 		if (this.minecraft.player == null || this.minecraft.level == null
 			|| !this.dimension.equals(this.minecraft.level.dimension().location().toString())) {
 			return;
 		}
-		var playerPosition = this.minecraft.player.getPosition(partialTick);
-		int playerX = (int)Math.round(mapX + mapWidth / 2.0 + (playerPosition.x - this.centerX) / this.zoom);
-		int playerY = (int)Math.round(mapY + mapHeight / 2.0 + (playerPosition.z - this.centerZ) / this.zoom);
-		if (playerX >= mapX && playerX <= mapX + mapWidth && playerY >= mapY && playerY <= mapY + mapHeight) {
-			MinimapRenderer.drawPlayerArrow(graphics, playerX, playerY, this.minecraft.player.getViewYRot(partialTick));
+		for (var player : this.minecraft.level.players()) {
+			if (player != this.minecraft.player && !this.config.showPlayers) {
+				continue;
+			}
+			var playerPosition = player.getPosition(partialTick);
+			int playerX = (int)Math.round(mapX + mapWidth / 2.0 + (playerPosition.x - this.centerX) / this.zoom);
+			int playerY = (int)Math.round(mapY + mapHeight / 2.0 + (playerPosition.z - this.centerZ) / this.zoom);
+			if (playerX >= mapX && playerX <= mapX + mapWidth && playerY >= mapY && playerY <= mapY + mapHeight) {
+				if (player == this.minecraft.player) {
+					MinimapRenderer.drawPlayerArrow(graphics, playerX, playerY, player.getViewYRot(partialTick));
+				} else {
+					MinimapRenderer.drawOtherPlayerMarker(graphics, playerX, playerY);
+				}
+			}
 		}
 	}
 
