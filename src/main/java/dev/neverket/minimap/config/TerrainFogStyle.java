@@ -5,15 +5,16 @@ public final class TerrainFogStyle {
 	private TerrainFogStyle() {
 	}
 
-	public static int terrainColor(ModConfig.UnknownTerrain unknown, boolean water) {
-		if (unknown == ModConfig.UnknownTerrain.DARK) {
-			return water ? 0xFF292929 : 0xFF5A5A5A;
-		}
-		return water ? 0x88292929 : 0x885A5A5A;
+	public static int terrainColor(boolean water) {
+		return water ? 0xFF292929 : 0xFF5A5A5A;
 	}
 
-	public static int boundaryColor(ModConfig.UnknownTerrain unknown) {
-		return unknown == ModConfig.UnknownTerrain.DARK ? 0xFF424242 : 0x88424242;
+	public static int composeTerrain(int unknownColor, boolean water, float fade) {
+		return alphaOver(unknownColor, terrainColor(water), fade);
+	}
+
+	public static int composeBoundary(int unknownColor, float fade) {
+		return alphaOver(unknownColor, 0xFF424242, fade);
 	}
 
 	public static int applyContour(int base, float fade) {
@@ -21,16 +22,25 @@ public final class TerrainFogStyle {
 	}
 
 	private static int alphaOver(int base, int overlay, float opacity) {
-		float amount = Math.clamp(opacity, 0.0F, 1.0F) * ((overlay >>> 24) / 255.0F);
-		return lerpColor(base, overlay | 0xFF000000, amount);
+		float overlayAlpha = Math.clamp(opacity, 0.0F, 1.0F) * ((overlay >>> 24) / 255.0F);
+		float baseAlpha = (base >>> 24) / 255.0F;
+		float outputAlpha = overlayAlpha + baseAlpha * (1.0F - overlayAlpha);
+		if (outputAlpha <= 0.0F) {
+			return 0;
+		}
+		int alpha = Math.round(outputAlpha * 255.0F);
+		int red = compositeChannel(base, overlay, 16, baseAlpha, overlayAlpha, outputAlpha);
+		int green = compositeChannel(base, overlay, 8, baseAlpha, overlayAlpha, outputAlpha);
+		int blue = compositeChannel(base, overlay, 0, baseAlpha, overlayAlpha, outputAlpha);
+		return alpha << 24 | red << 16 | green << 8 | blue;
 	}
 
-	private static int lerpColor(int from, int to, float amount) {
-		float clamped = Math.clamp(amount, 0.0F, 1.0F);
-		int alpha = Math.round((from >>> 24) + ((to >>> 24) - (from >>> 24)) * clamped);
-		int red = Math.round((from >> 16 & 0xFF) + ((to >> 16 & 0xFF) - (from >> 16 & 0xFF)) * clamped);
-		int green = Math.round((from >> 8 & 0xFF) + ((to >> 8 & 0xFF) - (from >> 8 & 0xFF)) * clamped);
-		int blue = Math.round((from & 0xFF) + ((to & 0xFF) - (from & 0xFF)) * clamped);
-		return alpha << 24 | red << 16 | green << 8 | blue;
+	private static int compositeChannel(
+		int base, int overlay, int shift, float baseAlpha, float overlayAlpha, float outputAlpha
+	) {
+		float baseChannel = base >> shift & 0xFF;
+		float overlayChannel = overlay >> shift & 0xFF;
+		return Math.round((overlayChannel * overlayAlpha
+			+ baseChannel * baseAlpha * (1.0F - overlayAlpha)) / outputAlpha);
 	}
 }

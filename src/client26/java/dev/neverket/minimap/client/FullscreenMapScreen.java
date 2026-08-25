@@ -122,7 +122,7 @@ public final class FullscreenMapScreen extends Screen {
 		this.viewTexture.update(
 			this.session.atlas(), this.session.terrainContours(), this.dimension,
 			this.centerX, this.centerZ, this.zoom, mapWidth, mapHeight,
-			false, this.config.unknownTerrain, false, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(),
+			false, this.config.fullscreenUnknownOpacity, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(),
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks,
 			highlightKnownBiomes, this.config.biomeHighlightColor.rgb(), this.config.biomeHighlightOpacity
 		);

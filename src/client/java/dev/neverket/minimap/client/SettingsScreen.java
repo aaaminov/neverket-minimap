@@ -67,16 +67,21 @@ public final class SettingsScreen extends OptionsSubScreen {
 
 		this.addHeader(Component.translatable("group.neverket-minimap.map_appearance"));
 		this.list.addSmall(
-			this.cycleButton("unknown", () -> enumValue("unknown", this.config.unknownTerrain), () -> this.config.unknownTerrain = this.config.unknownTerrain.next()),
-			this.cycleButton("map_lighting", () -> enumValue("map_lighting", this.config.mapLightingMode), () -> {
-				this.config.mapLightingMode = this.config.mapLightingMode.next();
-				this.updateDependentWidgets();
-			})
+			this.intSlider("minimap_unknown_opacity", Math.round(this.config.minimapUnknownOpacity * 100.0F), 0, 100, 5,
+				value -> this.config.minimapUnknownOpacity = value / 100.0F, value -> value + "%"),
+			this.intSlider("fullscreen_unknown_opacity", Math.round(this.config.fullscreenUnknownOpacity * 100.0F), 0, 100, 5,
+				value -> this.config.fullscreenUnknownOpacity = value / 100.0F, value -> value + "%")
 		);
 		this.nightDarknessWidget = this.intSlider("night_darkness", Math.round(this.config.nightDarkness * 100.0F), 0, 100, 5,
 			value -> this.config.nightDarkness = value / 100.0F, value -> value + "%");
 		this.list.addSmall(
-			this.nightDarknessWidget,
+			this.cycleButton("map_lighting", () -> enumValue("map_lighting", this.config.mapLightingMode), () -> {
+				this.config.mapLightingMode = this.config.mapLightingMode.next();
+				this.updateDependentWidgets();
+			}),
+			this.nightDarknessWidget
+		);
+		this.addBigWidget(
 			this.toggleButton("terrain_contours", () -> this.config.showTerrainContours, value -> this.config.showTerrainContours = value)
 		);
 		this.addBigWidget(this.intSlider("terrain_contour_range", this.config.terrainContourRangeChunks, 2, 32, 1,

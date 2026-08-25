@@ -22,7 +22,11 @@ public final class ModConfig {
 	public boolean showPlayers = true;
 	public boolean showMinimapBorder = true;
 	public MinimapBorderColor minimapBorderColor = MinimapBorderColor.BLACK;
-	public UnknownTerrain unknownTerrain = UnknownTerrain.DARK;
+	public float minimapUnknownOpacity = 1.0F;
+	public float fullscreenUnknownOpacity = 1.0F;
+	/** Legacy setting retained only while an old config is being migrated. */
+	@Deprecated
+	public UnknownTerrain unknownTerrain;
 	public boolean fullscreenEnabled = true;
 	public boolean pauseOnFullscreenMap = true;
 	public boolean visible = true;
@@ -86,7 +90,12 @@ public final class ModConfig {
 	private void sanitize() {
 		if (this.corner == null) this.corner = Corner.TOP_LEFT;
 		if (this.shape == null) this.shape = Shape.SQUARE;
-		if (this.unknownTerrain == null) this.unknownTerrain = UnknownTerrain.DARK;
+		if (this.unknownTerrain != null) {
+			float migratedOpacity = this.unknownTerrain == UnknownTerrain.DARK ? 1.0F : 0.0F;
+			this.minimapUnknownOpacity = migratedOpacity;
+			this.fullscreenUnknownOpacity = migratedOpacity;
+			this.unknownTerrain = null;
+		}
 		if (this.recordingMode == null) this.recordingMode = RecordingMode.MAPS;
 		if (this.mapDetailMode == null) this.mapDetailMode = MapDetailMode.VANILLA_PIXELS;
 		if (this.mapLightingMode == null) this.mapLightingMode = MapLightingMode.DAY_NIGHT;
@@ -95,6 +104,8 @@ public final class ModConfig {
 		if (this.biomeHighlightColor == null) this.biomeHighlightColor = BiomeHighlightColor.CYAN;
 		this.size = Math.clamp(this.size, 96, 256);
 		this.opacity = Math.clamp(this.opacity, 0.25F, 1.0F);
+		this.minimapUnknownOpacity = roundedPercentage(this.minimapUnknownOpacity, 1.0F);
+		this.fullscreenUnknownOpacity = roundedPercentage(this.fullscreenUnknownOpacity, 1.0F);
 		this.nightDarkness = !Float.isFinite(this.nightDarkness)
 			? 0.5F
 			: Math.round(Math.clamp(this.nightDarkness, 0.0F, 1.0F) * 20.0F) / 20.0F;
@@ -104,6 +115,12 @@ public final class ModConfig {
 		this.zoom = Math.clamp(this.zoom, 1, 32);
 		this.terrainContourRangeChunks = Math.clamp(this.terrainContourRangeChunks, 2, 32);
 		this.maxEdgeBannerMarkers = Math.clamp(this.maxEdgeBannerMarkers, 0, 32);
+	}
+
+	private static float roundedPercentage(float value, float fallback) {
+		return !Float.isFinite(value)
+			? fallback
+			: Math.round(Math.clamp(value, 0.0F, 1.0F) * 20.0F) / 20.0F;
 	}
 
 	public enum Corner {

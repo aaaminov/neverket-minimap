@@ -120,7 +120,7 @@ public final class FullscreenMapScreen extends Screen {
 		this.viewTexture.update(
 			this.session.atlas(), this.session.terrainContours(), this.dimension,
 			this.centerX, this.centerZ, this.zoom, mapWidth, mapHeight,
-			false, this.config.unknownTerrain, false, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(),
+			false, this.config.fullscreenUnknownOpacity, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(),
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks,
 			highlightKnownBiomes, this.config.biomeHighlightColor.rgb(), this.config.biomeHighlightOpacity
 		);
@@ -152,16 +152,9 @@ public final class FullscreenMapScreen extends Screen {
 
 	@Override
 	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-		int mapLeft = Math.min(MAP_MARGIN, this.width);
-		int mapTop = Math.min(MAP_TOP, this.height);
-		int mapRight = Math.max(mapLeft, this.width - MAP_MARGIN);
-		int mapBottom = Math.max(mapTop, this.height - MAP_BOTTOM);
-		// Never place the fullscreen backdrop over the map rectangle. Older
-		// GuiGraphics implementations can submit this batch after the texture.
-		graphics.fill(0, 0, this.width, mapTop, 0x78000000);
-		graphics.fill(0, mapBottom, this.width, this.height, 0x78000000);
-		graphics.fill(0, mapTop, mapLeft, mapBottom, 0x78000000);
-		graphics.fill(mapRight, mapTop, this.width, mapBottom, 0x78000000);
+		// The backdrop must also remain behind transparent map pixels. Submitting
+		// and flushing it before the map avoids the 1.21.1 batch-ordering issue.
+		graphics.fill(0, 0, this.width, this.height, 0x78000000);
 		graphics.flush();
 	}
 

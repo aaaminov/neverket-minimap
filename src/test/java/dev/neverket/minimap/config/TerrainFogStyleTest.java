@@ -6,17 +6,15 @@ import org.junit.jupiter.api.Test;
 
 class TerrainFogStyleTest {
 	@Test
-	void darkTerrainKeepsWaterDarkerThanLand() {
-		assertEquals(0xFF292929, TerrainFogStyle.terrainColor(ModConfig.UnknownTerrain.DARK, true));
-		assertEquals(0xFF5A5A5A, TerrainFogStyle.terrainColor(ModConfig.UnknownTerrain.DARK, false));
-		assertEquals(0xFF424242, TerrainFogStyle.boundaryColor(ModConfig.UnknownTerrain.DARK));
+	void terrainKeepsWaterDarkerThanLand() {
+		assertEquals(0xFF292929, TerrainFogStyle.terrainColor(true));
+		assertEquals(0xFF5A5A5A, TerrainFogStyle.terrainColor(false));
 	}
 
 	@Test
-	void transparentTerrainUsesTheSameRgbPalette() {
-		assertEquals(0x88292929, TerrainFogStyle.terrainColor(ModConfig.UnknownTerrain.TRANSPARENT, true));
-		assertEquals(0x885A5A5A, TerrainFogStyle.terrainColor(ModConfig.UnknownTerrain.TRANSPARENT, false));
-		assertEquals(0x88424242, TerrainFogStyle.boundaryColor(ModConfig.UnknownTerrain.TRANSPARENT));
+	void terrainEdgeFadesAlphaWithoutDarkRgbHalo() {
+		assertEquals(0x405A5A5A, TerrainFogStyle.composeTerrain(0, false, 0.25F));
+		assertEquals(0x40424242, TerrainFogStyle.composeBoundary(0, 0.25F));
 	}
 
 	@Test

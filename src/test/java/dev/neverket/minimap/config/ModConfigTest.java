@@ -25,6 +25,8 @@ class ModConfigTest {
 		assertFalse(config.showCardinalDirections);
 		assertTrue(config.showPlayers);
 		assertTrue(config.showTerrainContours);
+		assertEquals(1.0F, config.minimapUnknownOpacity);
+		assertEquals(1.0F, config.fullscreenUnknownOpacity);
 		assertEquals(16, config.terrainContourRangeChunks);
 		assertEquals(ModConfig.RecordingMode.MAPS, config.recordingMode);
 		assertEquals(ModConfig.MapDetailMode.LOADED_TERRAIN_DETAIL, config.mapDetailMode);
@@ -37,6 +39,17 @@ class ModConfigTest {
 		assertEquals(ModConfig.BiomeHighlightColor.CYAN, config.biomeHighlightColor);
 		assertEquals(0.35F, config.biomeHighlightOpacity);
 		assertTrue(config.showRecordingAreaOnBiomeHighlight);
+	}
+
+	@Test
+	void legacyTransparentUnknownTerrainMigratesToBothSliders() throws IOException {
+		Path path = this.directory.resolve("config.json");
+		Files.writeString(path, "{\"unknownTerrain\":\"TRANSPARENT\"}");
+
+		ModConfig config = ModConfig.load(path);
+
+		assertEquals(0.0F, config.minimapUnknownOpacity);
+		assertEquals(0.0F, config.fullscreenUnknownOpacity);
 	}
 
 	@Test
@@ -53,10 +66,13 @@ class ModConfigTest {
 	@Test
 	void rangedSettingsAreClampedAndRoundedToTheirUiSteps() throws IOException {
 		Path path = this.directory.resolve("config.json");
-		Files.writeString(path, "{\"nightDarkness\":0.46,\"biomeHighlightOpacity\":0.33,\"maxEdgeBannerMarkers\":99}");
+		Files.writeString(path, "{\"minimapUnknownOpacity\":0.13,\"fullscreenUnknownOpacity\":1.5,"
+			+ "\"nightDarkness\":0.46,\"biomeHighlightOpacity\":0.33,\"maxEdgeBannerMarkers\":99}");
 
 		ModConfig config = ModConfig.load(path);
 
+		assertEquals(0.15F, config.minimapUnknownOpacity);
+		assertEquals(1.0F, config.fullscreenUnknownOpacity);
 		assertEquals(0.45F, config.nightDarkness);
 		assertEquals(0.35F, config.biomeHighlightOpacity);
 		assertEquals(32, config.maxEdgeBannerMarkers);

@@ -3,7 +3,6 @@ package dev.neverket.minimap.client;
 import com.mojang.blaze3d.systems.RenderSystem;
 import dev.neverket.minimap.atlas.MapAtlas;
 import dev.neverket.minimap.config.MapLighting;
-import dev.neverket.minimap.config.ModConfig.UnknownTerrain;
 import dev.neverket.minimap.config.PackedMapColor;
 import dev.neverket.minimap.config.TerrainFogStyle;
 import java.util.Arrays;
@@ -41,8 +40,7 @@ public final class MapViewTexture implements AutoCloseable {
 	private int lastDisplayWidth;
 	private int lastDisplayHeight;
 	private boolean lastCircular;
-	private UnknownTerrain lastUnknown;
-	private boolean lastDimTransparentUnknown;
+	private float lastUnknownOpacity = Float.NaN;
 	private boolean lastIncludeDetailedTerrain;
 	private boolean lastDetailedTerrainRequiresMapCoverage;
 	private MapAtlas lastAtlas;
@@ -90,8 +88,7 @@ public final class MapViewTexture implements AutoCloseable {
 		int displayWidth,
 		int displayHeight,
 		boolean circular,
-		UnknownTerrain unknown,
-		boolean dimTransparentUnknown,
+		float unknownOpacity,
 		boolean includeDetailedTerrain,
 		boolean detailedTerrainRequiresMapCoverage,
 		boolean showTerrainContours,
@@ -125,8 +122,7 @@ public final class MapViewTexture implements AutoCloseable {
 			&& displayWidth == this.lastDisplayWidth
 			&& displayHeight == this.lastDisplayHeight
 			&& circular == this.lastCircular
-			&& unknown == this.lastUnknown
-			&& dimTransparentUnknown == this.lastDimTransparentUnknown
+			&& unknownOpacity == this.lastUnknownOpacity
 			&& includeDetailedTerrain == this.lastIncludeDetailedTerrain
 			&& detailedTerrainRequiresMapCoverage == this.lastDetailedTerrainRequiresMapCoverage
 			&& terrainContours == this.lastTerrainContours
@@ -150,7 +146,8 @@ public final class MapViewTexture implements AutoCloseable {
 		}
 		long updateStartedAt = System.nanoTime();
 
-		int unknownColor = unknown == UnknownTerrain.DARK ? 0xFF101216 : dimTransparentUnknown ? 0x50101216 : 0;
+		int unknownAlpha = Math.round(Math.clamp(unknownOpacity, 0.0F, 1.0F) * 255.0F);
+		int unknownColor = unknownAlpha << 24 | 0x101216;
 		int pixelCount = this.textureWidth * this.textureHeight;
 		this.ensureTerrainBuffers(terrainContours ? pixelCount : 0);
 		int[] terrainHeights = terrainContours ? this.terrainHeightBuffer : null;
@@ -192,15 +189,14 @@ public final class MapViewTexture implements AutoCloseable {
 					);
 					if (terrainHeights[index] != NO_HEIGHT) {
 						float fade = Byte.toUnsignedInt(terrainFade[index]) / 255.0F;
-						int terrainColor = TerrainFogStyle.terrainColor(unknown, terrainKinds[index] == WATER);
-						color = lerpColor(unknownColor, terrainColor, fade);
+						color = TerrainFogStyle.composeTerrain(unknownColor, terrainKinds[index] == WATER, fade);
 					}
 				}
 				this.setPixel(x, y, color);
 			}
 		}
 		if (terrainHeights != null) {
-			this.smoothTerrainBoundaries(terrainHeights, terrainKinds, terrainFade, unknown, unknownColor);
+			this.smoothTerrainBoundaries(terrainHeights, terrainKinds, terrainFade, unknownColor);
 			this.drawTerrainContours(terrainHeights, terrainKinds, terrainFade);
 		}
 		// The 1.21.1 GUI paths do not apply GPU tint consistently. Invalidate the
@@ -214,8 +210,7 @@ public final class MapViewTexture implements AutoCloseable {
 		this.lastDisplayWidth = displayWidth;
 		this.lastDisplayHeight = displayHeight;
 		this.lastCircular = circular;
-		this.lastUnknown = unknown;
-		this.lastDimTransparentUnknown = dimTransparentUnknown;
+		this.lastUnknownOpacity = unknownOpacity;
 		this.lastIncludeDetailedTerrain = includeDetailedTerrain;
 		this.lastDetailedTerrainRequiresMapCoverage = detailedTerrainRequiresMapCoverage;
 		this.lastAtlas = atlas;
@@ -336,8 +331,7 @@ public final class MapViewTexture implements AutoCloseable {
 		fades[index] = (byte)Math.round(fade * 255.0);
 	}
 
-	private void smoothTerrainBoundaries(int[] heights, byte[] kinds, byte[] fades, UnknownTerrain unknown, int unknownColor) {
-		int transitionColor = TerrainFogStyle.boundaryColor(unknown);
+	private void smoothTerrainBoundaries(int[] heights, byte[] kinds, byte[] fades, int unknownColor) {
 		for (int y = 1; y < this.textureHeight - 1; y++) {
 			for (int x = 1; x < this.textureWidth - 1; x++) {
 				int index = x + y * this.textureWidth;
@@ -348,7 +342,7 @@ public final class MapViewTexture implements AutoCloseable {
 				if (differentTerrain(kind, kinds[index - 1]) || differentTerrain(kind, kinds[index + 1])
 					|| differentTerrain(kind, kinds[index - this.textureWidth]) || differentTerrain(kind, kinds[index + this.textureWidth])) {
 					float fade = Byte.toUnsignedInt(fades[index]) / 255.0F;
-					this.setPixel(x, y, lerpColor(unknownColor, transitionColor, fade));
+					this.setPixel(x, y, TerrainFogStyle.composeBoundary(unknownColor, fade));
 				}
 			}
 		}
