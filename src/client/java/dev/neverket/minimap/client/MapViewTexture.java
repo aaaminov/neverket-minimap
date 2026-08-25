@@ -244,10 +244,15 @@ public final class MapViewTexture implements AutoCloseable {
 		this.uploadTinted(color);
 		graphics.flush();
 		RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-		graphics.blit(
-			this.id, x, y, width, height, this.sourceU, this.sourceV,
-			this.viewWidth, this.viewHeight, this.textureWidth, this.textureHeight
-		);
+		RenderSystem.enableBlend();
+		try {
+			graphics.blit(
+				this.id, x, y, width, height, this.sourceU, this.sourceV,
+				this.viewWidth, this.viewHeight, this.textureWidth, this.textureHeight
+			);
+		} finally {
+			RenderSystem.disableBlend();
+		}
 	}
 
 	/** Draws a screen-stable circular crop without baking the moving crop into the cached map texture. */
@@ -256,25 +261,30 @@ public final class MapViewTexture implements AutoCloseable {
 		this.uploadTinted(color);
 		graphics.flush();
 		RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+		RenderSystem.enableBlend();
 		double radius = Math.min(width, height) / 2.0;
 		double centerX = width / 2.0;
 		double centerY = height / 2.0;
 		float sourceScaleX = (float)this.viewWidth / width;
 		float sourceScaleY = (float)this.viewHeight / height;
-		for (int row = 0; row < height; row++) {
-			double dy = row + 0.5 - centerY;
-			double halfSpan = Math.sqrt(Math.max(0.0, radius * radius - dy * dy));
-			int left = Math.max(0, (int)Math.ceil(centerX - halfSpan - 0.5));
-			int right = Math.min(width, (int)Math.floor(centerX + halfSpan - 0.5) + 1);
-			if (left >= right) {
-				continue;
+		try {
+			for (int row = 0; row < height; row++) {
+				double dy = row + 0.5 - centerY;
+				double halfSpan = Math.sqrt(Math.max(0.0, radius * radius - dy * dy));
+				int left = Math.max(0, (int)Math.ceil(centerX - halfSpan - 0.5));
+				int right = Math.min(width, (int)Math.floor(centerX + halfSpan - 0.5) + 1);
+				if (left >= right) {
+					continue;
+				}
+				graphics.blit(
+					this.id, x + left, y + row, right - left, 1,
+					this.sourceU + left * sourceScaleX, this.sourceV + row * sourceScaleY,
+					Math.max(1, Math.round((right - left) * sourceScaleX)), Math.max(1, Math.round(sourceScaleY)),
+					this.textureWidth, this.textureHeight
+				);
 			}
-			graphics.blit(
-				this.id, x + left, y + row, right - left, 1,
-				this.sourceU + left * sourceScaleX, this.sourceV + row * sourceScaleY,
-				Math.max(1, Math.round((right - left) * sourceScaleX)), Math.max(1, Math.round(sourceScaleY)),
-				this.textureWidth, this.textureHeight
-			);
+		} finally {
+			RenderSystem.disableBlend();
 		}
 	}
 
