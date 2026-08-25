@@ -62,6 +62,7 @@ public final class FullscreenMapScreen extends Screen {
 	private boolean biomeHighlightDown;
 	private boolean chunkDebugDown;
 	private boolean chunkDebugButtonDown;
+	private boolean skipBackground;
 
 	public FullscreenMapScreen(
 		WorldSession session,
@@ -147,13 +148,23 @@ public final class FullscreenMapScreen extends Screen {
 		} else {
 			this.drawLegend(graphics, mapX, mapY, mapWidth);
 		}
-		super.render(graphics, mouseX, mouseY, partialTick);
+		this.skipBackground = true;
+		try {
+			super.render(graphics, mouseX, mouseY, partialTick);
+		} finally {
+			this.skipBackground = false;
+		}
 	}
 
 	@Override
 	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+		if (this.skipBackground) {
+			return;
+		}
 		// The backdrop must also remain behind transparent map pixels. Submitting
 		// and flushing it before the map avoids the 1.21.1 batch-ordering issue.
+		// Screen.render() calls renderBackground() again while drawing widgets;
+		// skipBackground prevents that second overlay from covering the map.
 		graphics.fill(0, 0, this.width, this.height, 0x78000000);
 		graphics.flush();
 	}
