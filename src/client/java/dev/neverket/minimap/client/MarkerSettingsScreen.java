@@ -6,7 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.AbstractSliderButton;
-import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
@@ -62,6 +62,7 @@ public final class MarkerSettingsScreen extends OptionsSubScreen {
 	@Override
 	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		graphics.fill(0, 0, this.width, this.height, 0x72000000);
+		graphics.flush();
 	}
 
 	private IconChoiceButton iconButton(ModConfig.QuickMarkerIcon icon) {
@@ -71,8 +72,7 @@ public final class MarkerSettingsScreen extends OptionsSubScreen {
 	}
 
 	private void addHeader(Component title) {
-		Button header = Button.builder(title, button -> {}).size(310, 20).build();
-		header.active = false;
+		StringWidget header = new StringWidget(310, 20, title, this.font).alignLeft();
 		this.list.addSmall(header, null);
 	}
 

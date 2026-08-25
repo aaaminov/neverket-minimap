@@ -10,6 +10,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsSubScreen;
@@ -133,6 +134,7 @@ public final class SettingsScreen extends OptionsSubScreen {
 	@Override
 	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		graphics.fill(0, 0, this.width, this.height, 0x72000000);
+		graphics.flush();
 	}
 
 	private AbstractWidget toggleButton(String key, Supplier<Boolean> current, java.util.function.Consumer<Boolean> change) {
@@ -175,8 +177,7 @@ public final class SettingsScreen extends OptionsSubScreen {
 	}
 
 	private void addHeader(Component title) {
-		Button header = Button.builder(title, button -> {}).size(310, 20).build();
-		header.active = false;
+		StringWidget header = new StringWidget(310, 20, title, this.font).alignLeft();
 		this.list.addSmall(header, null);
 	}
 

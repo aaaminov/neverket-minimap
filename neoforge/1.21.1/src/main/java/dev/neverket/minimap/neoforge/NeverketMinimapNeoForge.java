@@ -42,7 +42,7 @@ public final class NeverketMinimapNeoForge {
 	}
 
 	private void registerGuiLayers(RegisterGuiLayersEvent event) {
-		event.registerAbove(VanillaGuiLayers.HOTBAR, HUD_LAYER, this.client::render);
+		event.registerBelow(VanillaGuiLayers.CAMERA_OVERLAYS, HUD_LAYER, this.client::render);
 	}
 
 	private void clientTick(ClientTickEvent.Post event) {

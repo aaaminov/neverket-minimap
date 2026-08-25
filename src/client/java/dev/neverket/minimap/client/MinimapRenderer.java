@@ -32,7 +32,7 @@ public final class MinimapRenderer implements AutoCloseable {
 	}
 
 	public void render(GuiGraphics graphics, DeltaTracker deltaTracker) {
-		if (!this.config.visible || this.minecraft.screen instanceof FullscreenMapScreen
+		if (!this.config.visible || this.minecraft.options.hideGui || this.minecraft.screen instanceof FullscreenMapScreen
 			|| this.minecraft.player == null || this.minecraft.level == null || !this.session.active()) {
 			return;
 		}
@@ -119,7 +119,8 @@ public final class MinimapRenderer implements AutoCloseable {
 			this.minecraft,
 			ResourceLocation.fromNamespaceAndPath("neverket-minimap", "hud_view"),
 			size,
-			size
+			size,
+			4
 		);
 	}
 

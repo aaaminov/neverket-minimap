@@ -12,7 +12,7 @@ import net.minecraft.world.level.material.MapColor;
 
 public final class MapViewTexture implements AutoCloseable {
 	private static final int DEFAULT_OVERSCAN = 4;
-	private static final long MINIMAP_REFRESH_INTERVAL_NANOS = 100_000_000L;
+	private static final long MINIMAP_REFRESH_INTERVAL_NANOS = 250_000_000L;
 	private static final long FULLSCREEN_REFRESH_INTERVAL_NANOS = 350_000_000L;
 	private static final int NO_HEIGHT = Integer.MIN_VALUE;
 	private static final byte LAND = 1;
@@ -239,6 +239,8 @@ public final class MapViewTexture implements AutoCloseable {
 		this.ensureCreated();
 		setColor(graphics, color);
 		graphics.blit(this.id, x, y, width, height, this.sourceU, this.sourceV, this.viewWidth, this.viewHeight, this.textureWidth, this.textureHeight);
+		// 1.21.1 batches GUI draws; flush while the tint is still active.
+		graphics.flush();
 		graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
 	}
 
@@ -266,6 +268,8 @@ public final class MapViewTexture implements AutoCloseable {
 				this.textureWidth, this.textureHeight
 			);
 		}
+		// Keep the tint active until all circular rows have reached the GPU.
+		graphics.flush();
 		graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
 	}
 

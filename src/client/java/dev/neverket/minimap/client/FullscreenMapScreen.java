@@ -151,6 +151,8 @@ public final class FullscreenMapScreen extends Screen {
 	@Override
 	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		graphics.fill(0, 0, this.width, this.height, 0x78000000);
+		// Flush the translucent backdrop before the separately batched map texture.
+		graphics.flush();
 	}
 
 	@Override
