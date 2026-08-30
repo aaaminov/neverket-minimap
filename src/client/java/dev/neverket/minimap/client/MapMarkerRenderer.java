@@ -3,6 +3,7 @@ package dev.neverket.minimap.client;
 import com.mojang.blaze3d.platform.NativeImage;
 import dev.neverket.minimap.atlas.MapAtlas;
 import dev.neverket.minimap.config.ModConfig;
+import dev.neverket.minimap.geometry.MinimapProjection;
 import dev.neverket.minimap.marker.BannerMarker;
 import java.io.IOException;
 import java.io.InputStream;
@@ -50,6 +51,7 @@ public final class MapMarkerRenderer {
 		double centerX,
 		double centerZ,
 		double blocksPerPixel,
+		double rotationDegrees,
 		int mapX,
 		int mapY,
 		int mapWidth,
@@ -66,7 +68,7 @@ public final class MapMarkerRenderer {
 		for (BannerMarker marker : atlas.bannerMarkers(dimension)) {
 			ProjectedMarker projected = this.project(
 				new MarkerView(false, marker.x(), marker.z(), marker.name(), marker.assetId(), marker.modifiedAt()),
-				centerX, centerZ, blocksPerPixel, mapX, mapY, mapWidth, mapHeight, circular
+				centerX, centerZ, blocksPerPixel, rotationDegrees, mapX, mapY, mapWidth, mapHeight, circular
 			);
 			if (projected.onMap()) {
 				visible.add(projected);
@@ -83,7 +85,7 @@ public final class MapMarkerRenderer {
 			.filter(marker -> marker.dimension().equals(dimension))
 			.map(marker -> this.project(
 				new MarkerView(true, marker.x(), marker.z(), "", quickMarkerAsset(config.quickMarkerIcon), marker.modifiedAt()),
-				centerX, centerZ, blocksPerPixel, mapX, mapY, mapWidth, mapHeight, circular
+				centerX, centerZ, blocksPerPixel, rotationDegrees, mapX, mapY, mapWidth, mapHeight, circular
 			))
 			.ifPresent(visible::add);
 
@@ -105,6 +107,7 @@ public final class MapMarkerRenderer {
 		double centerX,
 		double centerZ,
 		double blocksPerPixel,
+		double rotationDegrees,
 		int mapX,
 		int mapY,
 		int mapWidth,
@@ -113,6 +116,9 @@ public final class MapMarkerRenderer {
 	) {
 		double dx = (marker.x() - centerX) / blocksPerPixel;
 		double dz = (marker.z() - centerZ) / blocksPerPixel;
+		MinimapProjection.Offset projectedOffset = MinimapProjection.worldToScreen(dx, dz, rotationDegrees);
+		dx = projectedOffset.x();
+		dz = projectedOffset.y();
 		double halfWidth = mapWidth / 2.0 - 1;
 		double halfHeight = mapHeight / 2.0 - 1;
 		double screenCenterX = mapX + mapWidth / 2.0;

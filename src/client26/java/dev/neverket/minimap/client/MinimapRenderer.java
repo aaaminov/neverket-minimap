@@ -2,6 +2,7 @@ package dev.neverket.minimap.client;
 
 import dev.neverket.minimap.config.ModConfig;
 import dev.neverket.minimap.config.MapLighting;
+import dev.neverket.minimap.geometry.MinimapProjection;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -14,12 +15,15 @@ import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 
 public final class MinimapRenderer implements AutoCloseable {
 	private static final int MARGIN = 10;
+	private static final double ROTATION_STEP_DEGREES = 2.0;
+	private static final long ROTATION_REFRESH_INTERVAL_NANOS = 250_000_000L;
 
 	private final Minecraft minecraft;
 	private final WorldSession session;
 	private final ModConfig config;
 	private final GuiGraphicsAccess graphicsAccess;
 	private final MapMarkerRenderer markerRenderer;
+	private final MinimapProjection.RotationLimiter rotationLimiter;
 	private MapViewTexture viewTexture;
 	private int viewSize;
 
@@ -29,6 +33,9 @@ public final class MinimapRenderer implements AutoCloseable {
 		this.config = config;
 		this.graphicsAccess = graphicsAccess;
 		this.markerRenderer = new MapMarkerRenderer(minecraft);
+		this.rotationLimiter = new MinimapProjection.RotationLimiter(
+			ROTATION_STEP_DEGREES, ROTATION_REFRESH_INTERVAL_NANOS
+		);
 		this.resizeViewTexture(config.size);
 	}
 
@@ -54,10 +61,12 @@ public final class MinimapRenderer implements AutoCloseable {
 
 		float partialTick = deltaTracker.getGameTimeDeltaPartialTick(true);
 		var playerPosition = this.minecraft.player.getPosition(partialTick);
+		float playerYaw = this.minecraft.player.getYRot(partialTick);
+		double rotationDegrees = this.rotationLimiter.update(playerYaw, this.config.rotateMinimap, System.nanoTime());
 		String dimension = this.minecraft.level.dimension().identifier().toString();
 		this.viewTexture.update(
 			this.session.atlas(), this.session.terrainContours(), dimension,
-			playerPosition.x, playerPosition.z, this.config.zoom, size, size,
+			playerPosition.x, playerPosition.z, rotationDegrees, this.config.zoom, size, size,
 			this.config.shape == ModConfig.Shape.CIRCLE, this.config.minimapUnknownOpacity,
 			this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(),
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks,
@@ -80,18 +89,18 @@ public final class MinimapRenderer implements AutoCloseable {
 		}
 		this.markerRenderer.render(
 			graphics, this.session.atlas(), this.config, dimension,
-			playerPosition.x, playerPosition.z, this.config.zoom,
+			playerPosition.x, playerPosition.z, this.config.zoom, rotationDegrees,
 			x, y, size, size, this.config.shape == ModConfig.Shape.CIRCLE,
 			Integer.MIN_VALUE, Integer.MIN_VALUE, false
 		);
-		this.drawOtherPlayers(graphics, playerPosition.x, playerPosition.z, x, y, size, partialTick);
-		drawPlayerArrow(graphics, x + size / 2, y + size / 2, this.minecraft.player.getYRot(partialTick));
+		this.drawOtherPlayers(graphics, playerPosition.x, playerPosition.z, x, y, size, partialTick, rotationDegrees);
+		drawPlayerArrow(graphics, x + size / 2, y + size / 2, this.config.rotateMinimap ? -180.0F : playerYaw);
+		if (this.config.rotateMinimap && this.config.showNorth) {
+			drawNorthIndicator(graphics, x, y, size, this.config.shape == ModConfig.Shape.CIRCLE, rotationDegrees);
+		}
 
 		if (this.config.showCardinalDirections) {
-			graphics.centeredText(this.minecraft.font, Component.translatable("direction.neverket-minimap.north"), x + size / 2, y - 10, 0xFFFFFFFF);
-			graphics.centeredText(this.minecraft.font, Component.translatable("direction.neverket-minimap.south"), x + size / 2, y + size + 2, 0xFFFFFFFF);
-			graphics.text(this.minecraft.font, Component.translatable("direction.neverket-minimap.west"), x - 10, y + size / 2 - 4, 0xFFFFFFFF, true);
-			graphics.text(this.minecraft.font, Component.translatable("direction.neverket-minimap.east"), x + size + 3, y + size / 2 - 4, 0xFFFFFFFF, true);
+			this.drawCardinalDirections(graphics, x, y, size, rotationDegrees);
 		}
 		if (this.config.showCoordinates) {
 			String coordinates = (int)Math.floor(playerPosition.x) + ", " + (int)Math.floor(playerPosition.z);
@@ -101,7 +110,8 @@ public final class MinimapRenderer implements AutoCloseable {
 	}
 
 	private void drawOtherPlayers(
-		GuiGraphicsExtractor graphics, double centerX, double centerZ, int mapX, int mapY, int size, float partialTick
+		GuiGraphicsExtractor graphics, double centerX, double centerZ, int mapX, int mapY, int size, float partialTick,
+		double rotationDegrees
 	) {
 		if (!this.config.showPlayers || this.minecraft.level == null || this.minecraft.player == null) {
 			return;
@@ -114,12 +124,96 @@ public final class MinimapRenderer implements AutoCloseable {
 			var position = player.getPosition(partialTick);
 			double dx = (position.x - centerX) / this.config.zoom;
 			double dz = (position.z - centerZ) / this.config.zoom;
+			MinimapProjection.Offset offset = MinimapProjection.worldToScreen(dx, dz, rotationDegrees);
+			dx = offset.x();
+			dz = offset.y();
 			if (Math.abs(dx) > radius || Math.abs(dz) > radius
 				|| (this.config.shape == ModConfig.Shape.CIRCLE && dx * dx + dz * dz > radius * radius)) {
 				continue;
 			}
 			drawOtherPlayerMarker(graphics, (int)Math.round(mapX + size / 2.0 + dx), (int)Math.round(mapY + size / 2.0 + dz));
 		}
+	}
+
+	private void drawCardinalDirections(GuiGraphicsExtractor graphics, int x, int y, int size, double rotationDegrees) {
+		boolean circular = this.config.shape == ModConfig.Shape.CIRCLE;
+		drawCardinal(graphics, "north", 0.0, -1.0, x, y, size, circular, rotationDegrees);
+		drawCardinal(graphics, "south", 0.0, 1.0, x, y, size, circular, rotationDegrees);
+		drawCardinal(graphics, "west", -1.0, 0.0, x, y, size, circular, rotationDegrees);
+		drawCardinal(graphics, "east", 1.0, 0.0, x, y, size, circular, rotationDegrees);
+	}
+
+	private void drawCardinal(
+		GuiGraphicsExtractor graphics,
+		String key,
+		double worldX,
+		double worldZ,
+		int x,
+		int y,
+		int size,
+		boolean circular,
+		double rotationDegrees
+	) {
+		MinimapProjection.Offset point = MinimapProjection.framePoint(
+			worldX, worldZ, rotationDegrees, size / 2.0 + 6.0, size / 2.0 + 6.0, circular
+		);
+		int textX = (int)Math.round(x + size / 2.0 + point.x());
+		int textY = (int)Math.round(y + size / 2.0 + point.y()) - 4;
+		graphics.centeredText(
+			this.minecraft.font, Component.translatable("direction.neverket-minimap." + key), textX, textY, 0xFFFFFFFF
+		);
+	}
+
+	private static void drawNorthIndicator(
+		GuiGraphicsExtractor graphics, int x, int y, int size, boolean circular, double rotationDegrees
+	) {
+		MinimapProjection.Offset direction = MinimapProjection.worldToScreen(0.0, -1.0, rotationDegrees).normalized();
+		MinimapProjection.Offset point = MinimapProjection.framePoint(
+			0.0, -1.0, rotationDegrees, size / 2.0, size / 2.0, circular
+		);
+		int centerX = (int)Math.round(x + size / 2.0 + point.x());
+		int centerY = (int)Math.round(y + size / 2.0 + point.y());
+		drawCompassNeedle(graphics, centerX, centerY, direction.x(), direction.y());
+	}
+
+	private static void drawCompassNeedle(
+		GuiGraphicsExtractor graphics, int centerX, int centerY, double directionX, double directionY
+	) {
+		double perpendicularX = -directionY;
+		double perpendicularY = directionX;
+		for (int step = -4; step <= 4; step++) {
+			drawNeedleOutline(graphics, centerX, centerY, directionX, directionY, perpendicularX, perpendicularY, step, 0);
+		}
+		for (int side = -2; side <= 2; side++) {
+			drawNeedleOutline(graphics, centerX, centerY, directionX, directionY, perpendicularX, perpendicularY, 1, side);
+		}
+		for (int step = -3; step <= 0; step++) {
+			drawNeedlePixel(graphics, centerX, centerY, directionX, directionY, perpendicularX, perpendicularY, step, 0, 0xFFFFFFFF);
+		}
+		for (int step = 1; step <= 4; step++) {
+			drawNeedlePixel(graphics, centerX, centerY, directionX, directionY, perpendicularX, perpendicularY, step, 0, 0xFFFF4545);
+		}
+		for (int side = -2; side <= 2; side++) {
+			drawNeedlePixel(graphics, centerX, centerY, directionX, directionY, perpendicularX, perpendicularY, 1, side, 0xFFFF4545);
+		}
+	}
+
+	private static void drawNeedleOutline(
+		GuiGraphicsExtractor graphics, int centerX, int centerY, double directionX, double directionY,
+		double perpendicularX, double perpendicularY, int step, int side
+	) {
+		int pixelX = (int)Math.round(centerX + directionX * step + perpendicularX * side);
+		int pixelY = (int)Math.round(centerY + directionY * step + perpendicularY * side);
+		graphics.fill(pixelX - 1, pixelY - 1, pixelX + 2, pixelY + 2, 0xE0000000);
+	}
+
+	private static void drawNeedlePixel(
+		GuiGraphicsExtractor graphics, int centerX, int centerY, double directionX, double directionY,
+		double perpendicularX, double perpendicularY, int step, int side, int color
+	) {
+		int pixelX = (int)Math.round(centerX + directionX * step + perpendicularX * side);
+		int pixelY = (int)Math.round(centerY + directionY * step + perpendicularY * side);
+		graphics.fill(pixelX, pixelY, pixelX + 1, pixelY + 1, color);
 	}
 
 	private boolean useDetailedTerrain() {

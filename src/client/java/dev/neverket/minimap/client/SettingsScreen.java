@@ -22,6 +22,7 @@ public final class SettingsScreen extends OptionsSubScreen {
 	private AbstractWidget mapDetailWidget;
 	private AbstractWidget nightDarknessWidget;
 	private AbstractWidget minimapBorderColorWidget;
+	private AbstractWidget showNorthWidget;
 
 	public SettingsScreen(ModConfig config) {
 		this(null, config);
@@ -53,6 +54,14 @@ public final class SettingsScreen extends OptionsSubScreen {
 		this.list.addSmall(
 			this.toggleButton("coordinates", () -> this.config.showCoordinates, value -> this.config.showCoordinates = value),
 			this.toggleButton("cardinals", () -> this.config.showCardinalDirections, value -> this.config.showCardinalDirections = value)
+		);
+		this.showNorthWidget = this.toggleButton("show_north", () -> this.config.showNorth, value -> this.config.showNorth = value);
+		this.list.addSmall(
+			this.toggleButton("rotate_minimap", () -> this.config.rotateMinimap, value -> {
+				this.config.rotateMinimap = value;
+				this.updateDependentWidgets();
+			}),
+			this.showNorthWidget
 		);
 		this.minimapBorderColorWidget = this.cycleButton("minimap_border_color", () -> enumValue("minimap_border_color", this.config.minimapBorderColor), () ->
 			this.config.minimapBorderColor = this.config.minimapBorderColor.next());
@@ -206,6 +215,10 @@ public final class SettingsScreen extends OptionsSubScreen {
 		if (this.minimapBorderColorWidget != null) {
 			this.minimapBorderColorWidget.active = this.config.showMinimapBorder;
 			this.setDescription(this.minimapBorderColorWidget, "minimap_border_color", !this.config.showMinimapBorder);
+		}
+		if (this.showNorthWidget != null) {
+			this.showNorthWidget.active = this.config.rotateMinimap;
+			this.setDescription(this.showNorthWidget, "show_north", !this.config.rotateMinimap);
 		}
 	}
 

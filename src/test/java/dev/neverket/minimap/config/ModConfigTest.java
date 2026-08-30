@@ -23,6 +23,8 @@ class ModConfigTest {
 		assertEquals(1.0F, config.opacity);
 		assertEquals(8, config.zoom);
 		assertFalse(config.showCardinalDirections);
+		assertFalse(config.rotateMinimap);
+		assertTrue(config.showNorth);
 		assertTrue(config.showPlayers);
 		assertTrue(config.showTerrainContours);
 		assertEquals(1.0F, config.minimapUnknownOpacity);
@@ -61,6 +63,22 @@ class ModConfigTest {
 
 		assertEquals(ModConfig.Corner.BOTTOM_RIGHT, config.corner);
 		assertEquals(1.0F, config.nightDarkness);
+		assertFalse(config.rotateMinimap);
+		assertTrue(config.showNorth);
+	}
+
+	@Test
+	void rotationSettingsRoundTrip() {
+		Path path = this.directory.resolve("config.json");
+		ModConfig config = ModConfig.load(path);
+		config.rotateMinimap = true;
+		config.showNorth = false;
+		config.save();
+
+		ModConfig reloaded = ModConfig.load(path);
+
+		assertTrue(reloaded.rotateMinimap);
+		assertFalse(reloaded.showNorth);
 	}
 
 	@Test
