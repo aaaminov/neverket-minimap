@@ -13,14 +13,6 @@ public final class MinimapProjection {
 		return normalizeDegrees(180.0 - yawDegrees);
 	}
 
-	public static double quantizedViewRotationDegrees(double yawDegrees, double stepDegrees) {
-		if (!(stepDegrees > 0.0) || !Double.isFinite(stepDegrees)) {
-			throw new IllegalArgumentException("stepDegrees must be finite and positive");
-		}
-		double rotation = viewRotationDegrees(yawDegrees);
-		return normalizeDegrees(Math.round(rotation / stepDegrees) * stepDegrees);
-	}
-
 	public static double normalizeDegrees(double degrees) {
 		if (!Double.isFinite(degrees)) {
 			return 0.0;
@@ -69,6 +61,14 @@ public final class MinimapProjection {
 		return direction.scaled(Math.min(horizontalScale, verticalScale));
 	}
 
+	/** Extra pixels required on one side so a rotated rectangle never exposes an empty corner. */
+	public static int rotationPadding(int axisLength, int otherAxisLength) {
+		if (axisLength <= 0 || otherAxisLength <= 0) {
+			throw new IllegalArgumentException("axis lengths must be positive");
+		}
+		return Math.max(0, (int)Math.ceil((Math.hypot(axisLength, otherAxisLength) - axisLength) / 2.0));
+	}
+
 	public record Offset(double x, double y) {
 		public Offset normalized() {
 			double length = Math.hypot(this.x, this.y);
@@ -77,40 +77,6 @@ public final class MinimapProjection {
 
 		public Offset scaled(double scale) {
 			return new Offset(this.x * scale, this.y * scale);
-		}
-	}
-
-	/** Keeps every minimap layer on one throttled rotation angle. */
-	public static final class RotationLimiter {
-		private final double stepDegrees;
-		private final long intervalNanos;
-		private double appliedDegrees;
-		private long lastUpdateNanos = Long.MIN_VALUE;
-
-		public RotationLimiter(double stepDegrees, long intervalNanos) {
-			if (!(stepDegrees > 0.0) || !Double.isFinite(stepDegrees)) {
-				throw new IllegalArgumentException("stepDegrees must be finite and positive");
-			}
-			if (intervalNanos < 0L) {
-				throw new IllegalArgumentException("intervalNanos must not be negative");
-			}
-			this.stepDegrees = stepDegrees;
-			this.intervalNanos = intervalNanos;
-		}
-
-		public double update(double yawDegrees, boolean enabled, long nowNanos) {
-			if (!enabled) {
-				this.appliedDegrees = 0.0;
-				this.lastUpdateNanos = Long.MIN_VALUE;
-				return 0.0;
-			}
-			if (this.lastUpdateNanos == Long.MIN_VALUE
-				|| nowNanos < this.lastUpdateNanos
-				|| nowNanos - this.lastUpdateNanos >= this.intervalNanos) {
-				this.appliedDegrees = quantizedViewRotationDegrees(yawDegrees, this.stepDegrees);
-				this.lastUpdateNanos = nowNanos;
-			}
-			return this.appliedDegrees;
 		}
 	}
 }

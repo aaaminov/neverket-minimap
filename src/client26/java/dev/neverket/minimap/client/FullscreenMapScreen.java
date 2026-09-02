@@ -121,7 +121,7 @@ public final class FullscreenMapScreen extends Screen {
 		boolean showChunkDebug = this.chunkDebugDown || this.chunkDebugKey.isDown() || this.chunkDebugButtonDown;
 		this.viewTexture.update(
 			this.session.atlas(), this.session.terrainContours(), this.dimension,
-			this.centerX, this.centerZ, 0.0, this.zoom, mapWidth, mapHeight,
+			this.centerX, this.centerZ, this.zoom, mapWidth, mapHeight,
 			false, this.config.fullscreenUnknownOpacity, this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(),
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks,
 			highlightKnownBiomes, this.config.biomeHighlightColor.rgb(), this.config.biomeHighlightOpacity

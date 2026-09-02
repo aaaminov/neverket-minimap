@@ -29,6 +29,8 @@ public final class MapViewTexture implements AutoCloseable {
 	private final int viewHeight;
 	private final int centerSnapPixels;
 	private final int overscan;
+	private final int rotationPaddingX;
+	private final int rotationPaddingY;
 	private final int textureWidth;
 	private final int textureHeight;
 	private final int[] basePixels;
@@ -37,7 +39,6 @@ public final class MapViewTexture implements AutoCloseable {
 	private String lastDimension;
 	private double lastSampleCenterX = Double.NaN;
 	private double lastSampleCenterZ = Double.NaN;
-	private double lastRotationDegrees = Double.NaN;
 	private double lastBlocksPerScreenPixel = Double.NaN;
 	private int lastDisplayWidth;
 	private int lastDisplayHeight;
@@ -63,16 +64,30 @@ public final class MapViewTexture implements AutoCloseable {
 	private float sourceV;
 
 	public MapViewTexture(Minecraft minecraft, ResourceLocation id, int viewWidth, int viewHeight) {
-		this(minecraft, id, viewWidth, viewHeight, 0);
+		this(minecraft, id, viewWidth, viewHeight, 0, false);
 	}
 
 	public MapViewTexture(Minecraft minecraft, ResourceLocation id, int viewWidth, int viewHeight, int centerSnapPixels) {
+		this(minecraft, id, viewWidth, viewHeight, centerSnapPixels, false);
+	}
+
+	public MapViewTexture(
+		Minecraft minecraft,
+		ResourceLocation id,
+		int viewWidth,
+		int viewHeight,
+		int centerSnapPixels,
+		boolean rotationOverscan
+	) {
 		this.minecraft = minecraft;
 		this.id = id;
 		this.viewWidth = viewWidth;
 		this.viewHeight = viewHeight;
 		this.centerSnapPixels = Math.max(0, centerSnapPixels);
-		this.overscan = Math.max(DEFAULT_OVERSCAN, (int)Math.ceil((centerSnapPixels + 1) * Math.sqrt(2.0)));
+		this.rotationPaddingX = rotationOverscan ? MinimapProjection.rotationPadding(viewWidth, viewHeight) : 0;
+		this.rotationPaddingY = rotationOverscan ? MinimapProjection.rotationPadding(viewHeight, viewWidth) : 0;
+		int snapPadding = (int)Math.ceil((this.centerSnapPixels + 1) * Math.sqrt(2.0));
+		this.overscan = Math.max(DEFAULT_OVERSCAN, snapPadding + Math.max(this.rotationPaddingX, this.rotationPaddingY));
 		this.textureWidth = viewWidth + this.overscan * 2;
 		this.textureHeight = viewHeight + this.overscan * 2;
 		this.basePixels = new int[this.textureWidth * this.textureHeight];
@@ -86,7 +101,6 @@ public final class MapViewTexture implements AutoCloseable {
 		String dimension,
 		double centerX,
 		double centerZ,
-		double rotationDegrees,
 		double blocksPerScreenPixel,
 		int displayWidth,
 		int displayHeight,
@@ -101,19 +115,12 @@ public final class MapViewTexture implements AutoCloseable {
 		float biomeHighlightOpacity
 	) {
 		this.ensureCreated();
-		rotationDegrees = MinimapProjection.normalizeDegrees(rotationDegrees);
-		double rotationRadians = Math.toRadians(rotationDegrees);
-		double rotationCosine = Math.cos(rotationRadians);
-		double rotationSine = Math.sin(rotationRadians);
 		double blocksPerTexturePixelX = blocksPerScreenPixel * displayWidth / this.viewWidth;
 		double blocksPerTexturePixelZ = blocksPerScreenPixel * displayHeight / this.viewHeight;
 		double sampleCenterX = this.snapCenter(centerX, blocksPerTexturePixelX);
 		double sampleCenterZ = this.snapCenter(centerZ, blocksPerTexturePixelZ);
-		MinimapProjection.Offset centerOffset = MinimapProjection.worldToScreen(
-			centerX - sampleCenterX, centerZ - sampleCenterZ, rotationDegrees
-		);
-		this.sourceU = (float)(this.overscan + centerOffset.x() / blocksPerTexturePixelX);
-		this.sourceV = (float)(this.overscan + centerOffset.y() / blocksPerTexturePixelZ);
+		this.sourceU = (float)(this.overscan + (centerX - sampleCenterX) / blocksPerTexturePixelX);
+		this.sourceV = (float)(this.overscan + (centerZ - sampleCenterZ) / blocksPerTexturePixelZ);
 
 		boolean terrainContours = showTerrainContours
 			&& this.minecraft.level != null
@@ -128,7 +135,6 @@ public final class MapViewTexture implements AutoCloseable {
 		boolean geometryUnchanged = dimension.equals(this.lastDimension)
 			&& sampleCenterX == this.lastSampleCenterX
 			&& sampleCenterZ == this.lastSampleCenterZ
-			&& rotationDegrees == this.lastRotationDegrees
 			&& blocksPerScreenPixel == this.lastBlocksPerScreenPixel
 			&& displayWidth == this.lastDisplayWidth
 			&& displayHeight == this.lastDisplayHeight
@@ -177,12 +183,10 @@ public final class MapViewTexture implements AutoCloseable {
 
 		for (int y = 0; y < this.textureHeight; y++) {
 			for (int x = 0; x < this.textureWidth; x++) {
-				double screenX = (x + 0.5 - this.textureWidth / 2.0) * blocksPerTexturePixelX;
-				double screenY = (y + 0.5 - this.textureHeight / 2.0) * blocksPerTexturePixelZ;
-				double worldOffsetX = screenX * rotationCosine + screenY * rotationSine;
-				double worldOffsetZ = -screenX * rotationSine + screenY * rotationCosine;
-				int worldX = (int)Math.floor(sampleCenterX + worldOffsetX);
-				int worldZ = (int)Math.floor(sampleCenterZ + worldOffsetZ);
+				double dx = x + 0.5 - this.textureWidth / 2.0;
+				double dz = y + 0.5 - this.textureHeight / 2.0;
+				int worldX = (int)Math.floor(sampleCenterX + dx * blocksPerTexturePixelX);
+				int worldZ = (int)Math.floor(sampleCenterZ + dz * blocksPerTexturePixelZ);
 				int packedColor = colorSampler.colorAt(worldX, worldZ);
 				if (packedColor != 0) {
 					int color = PACKED_MAP_COLORS[packedColor & 0xFF];
@@ -219,7 +223,6 @@ public final class MapViewTexture implements AutoCloseable {
 		this.lastDimension = dimension;
 		this.lastSampleCenterX = sampleCenterX;
 		this.lastSampleCenterZ = sampleCenterZ;
-		this.lastRotationDegrees = rotationDegrees;
 		this.lastBlocksPerScreenPixel = blocksPerScreenPixel;
 		this.lastDisplayWidth = displayWidth;
 		this.lastDisplayHeight = displayHeight;
@@ -263,6 +266,27 @@ public final class MapViewTexture implements AutoCloseable {
 			graphics.blit(
 				this.id, x, y, width, height, this.sourceU, this.sourceV,
 				this.viewWidth, this.viewHeight, this.textureWidth, this.textureHeight
+			);
+		} finally {
+			RenderSystem.disableBlend();
+		}
+	}
+
+	/** Draws the diagonal source area used while a square minimap is rotated by the GUI pose. */
+	public void blitOverscanned(GuiGraphics graphics, int x, int y, int width, int height, int color) {
+		this.ensureCreated();
+		this.uploadTinted(color);
+		graphics.flush();
+		RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+		RenderSystem.enableBlend();
+		int drawPaddingX = (int)Math.ceil((double)this.rotationPaddingX * width / this.viewWidth);
+		int drawPaddingY = (int)Math.ceil((double)this.rotationPaddingY * height / this.viewHeight);
+		try {
+			graphics.blit(
+				this.id, x - drawPaddingX, y - drawPaddingY, width + drawPaddingX * 2, height + drawPaddingY * 2,
+				this.sourceU - this.rotationPaddingX, this.sourceV - this.rotationPaddingY,
+				this.viewWidth + this.rotationPaddingX * 2, this.viewHeight + this.rotationPaddingY * 2,
+				this.textureWidth, this.textureHeight
 			);
 		} finally {
 			RenderSystem.disableBlend();

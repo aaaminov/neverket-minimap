@@ -15,17 +15,15 @@ import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 
 public final class MinimapRenderer implements AutoCloseable {
 	private static final int MARGIN = 10;
-	private static final double ROTATION_STEP_DEGREES = 2.0;
-	private static final long ROTATION_REFRESH_INTERVAL_NANOS = 250_000_000L;
 
 	private final Minecraft minecraft;
 	private final WorldSession session;
 	private final ModConfig config;
 	private final GuiGraphicsAccess graphicsAccess;
 	private final MapMarkerRenderer markerRenderer;
-	private final MinimapProjection.RotationLimiter rotationLimiter;
 	private MapViewTexture viewTexture;
 	private int viewSize;
+	private boolean viewRotationOverscan;
 
 	public MinimapRenderer(Minecraft minecraft, WorldSession session, ModConfig config, GuiGraphicsAccess graphicsAccess) {
 		this.minecraft = minecraft;
@@ -33,10 +31,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		this.config = config;
 		this.graphicsAccess = graphicsAccess;
 		this.markerRenderer = new MapMarkerRenderer(minecraft);
-		this.rotationLimiter = new MinimapProjection.RotationLimiter(
-			ROTATION_STEP_DEGREES, ROTATION_REFRESH_INTERVAL_NANOS
-		);
-		this.resizeViewTexture(config.size);
+		this.resizeViewTexture(config.size, this.needsRotationOverscan());
 	}
 
 	public void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
@@ -46,7 +41,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		}
 
 		int size = this.config.size;
-		this.resizeViewTexture(size);
+		this.resizeViewTexture(size, this.needsRotationOverscan());
 		int cardinalPadding = this.config.showCardinalDirections ? 7 : 0;
 		int bottomTextPadding = (this.config.showCardinalDirections ? 12 : 0) + (this.config.showCoordinates ? 14 : 0);
 		int x = switch (this.config.corner) {
@@ -62,11 +57,13 @@ public final class MinimapRenderer implements AutoCloseable {
 		float partialTick = deltaTracker.getGameTimeDeltaPartialTick(true);
 		var playerPosition = this.minecraft.player.getPosition(partialTick);
 		float playerYaw = this.minecraft.player.getYRot(partialTick);
-		double rotationDegrees = this.rotationLimiter.update(playerYaw, this.config.rotateMinimap, System.nanoTime());
+		double rotationDegrees = this.config.rotateMinimap
+			? MinimapProjection.viewRotationDegrees(playerYaw)
+			: 0.0;
 		String dimension = this.minecraft.level.dimension().identifier().toString();
 		this.viewTexture.update(
 			this.session.atlas(), this.session.terrainContours(), dimension,
-			playerPosition.x, playerPosition.z, rotationDegrees, this.config.zoom, size, size,
+			playerPosition.x, playerPosition.z, this.config.zoom, size, size,
 			this.config.shape == ModConfig.Shape.CIRCLE, this.config.minimapUnknownOpacity,
 			this.useDetailedTerrain(), this.detailedTerrainRequiresMapCoverage(),
 			this.config.showTerrainContours, this.config.terrainContourRangeChunks,
@@ -74,11 +71,7 @@ public final class MinimapRenderer implements AutoCloseable {
 		);
 
 		int tint = mapTint(this.minecraft, this.config, this.config.opacity);
-		if (this.config.shape == ModConfig.Shape.CIRCLE) {
-			this.viewTexture.blitCircular(graphics, x, y, size, size, tint);
-		} else {
-			this.viewTexture.blit(graphics, x, y, size, size, tint);
-		}
+		this.drawMapTexture(graphics, x, y, size, tint, rotationDegrees);
 		if (this.config.showMinimapBorder) {
 			int borderColor = this.config.minimapBorderColor.argb();
 			if (this.config.shape == ModConfig.Shape.SQUARE) {
@@ -106,6 +99,40 @@ public final class MinimapRenderer implements AutoCloseable {
 			String coordinates = (int)Math.floor(playerPosition.x) + ", " + (int)Math.floor(playerPosition.z);
 			int coordinatesY = y + size + (this.config.showCardinalDirections ? 17 : 5);
 			graphics.centeredText(this.minecraft.font, coordinates, x + size / 2, coordinatesY, 0xFFFFFFFF);
+		}
+	}
+
+	private void drawMapTexture(
+		GuiGraphicsExtractor graphics, int x, int y, int size, int tint, double rotationDegrees
+	) {
+		boolean circular = this.config.shape == ModConfig.Shape.CIRCLE;
+		if (!this.config.rotateMinimap) {
+			if (circular) {
+				this.viewTexture.blitCircular(graphics, x, y, size, size, tint);
+			} else {
+				this.viewTexture.blit(graphics, x, y, size, size, tint);
+			}
+			return;
+		}
+
+		if (!circular) {
+			graphics.enableScissor(x, y, x + size, y + size);
+		}
+		graphics.pose().pushMatrix();
+		try {
+			graphics.pose().translate(x + size / 2.0F, y + size / 2.0F);
+			graphics.pose().rotate((float)Math.toRadians(rotationDegrees));
+			graphics.pose().translate(-(x + size / 2.0F), -(y + size / 2.0F));
+			if (circular) {
+				this.viewTexture.blitCircular(graphics, x, y, size, size, tint);
+			} else {
+				this.viewTexture.blitOverscanned(graphics, x, y, size, size, tint);
+			}
+		} finally {
+			graphics.pose().popMatrix();
+			if (!circular) {
+				graphics.disableScissor();
+			}
 		}
 	}
 
@@ -225,21 +252,28 @@ public final class MinimapRenderer implements AutoCloseable {
 		return this.config.recordingMode == ModConfig.RecordingMode.MAPS;
 	}
 
-	private void resizeViewTexture(int size) {
-		if (this.viewTexture != null && this.viewSize == size) {
+	private void resizeViewTexture(int size, boolean rotationOverscan) {
+		if (this.viewTexture != null && this.viewSize == size && this.viewRotationOverscan == rotationOverscan) {
 			return;
 		}
 		if (this.viewTexture != null) {
 			this.viewTexture.close();
 		}
 		this.viewSize = size;
+		this.viewRotationOverscan = rotationOverscan;
 		this.viewTexture = new MapViewTexture(
 			this.minecraft,
 			this.graphicsAccess,
 			Identifier.fromNamespaceAndPath("neverket-minimap", "hud_view"),
 			size,
-			size
+			size,
+			0,
+			rotationOverscan
 		);
+	}
+
+	private boolean needsRotationOverscan() {
+		return this.config.rotateMinimap && this.config.shape == ModConfig.Shape.SQUARE;
 	}
 
 	private boolean hasVisibleEffects() {

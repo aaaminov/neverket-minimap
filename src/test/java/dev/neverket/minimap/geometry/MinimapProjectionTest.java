@@ -35,20 +35,15 @@ class MinimapProjectionTest {
 	}
 
 	@Test
-	void viewRotationCanBeQuantizedWithoutChangingItsConvention() {
-		assertEquals(90.0, MinimapProjection.quantizedViewRotationDegrees(91.0, 2.0), EPSILON);
-		assertEquals(-180.0, MinimapProjection.quantizedViewRotationDegrees(0.0, 2.0), EPSILON);
+	void viewRotationPreservesFractionalYawForSmoothRendering() {
+		assertEquals(167.75, MinimapProjection.viewRotationDegrees(12.25), EPSILON);
+		assertEquals(167.5, MinimapProjection.viewRotationDegrees(12.5), EPSILON);
 	}
 
 	@Test
-	void rotationLimiterKeepsOneAppliedAngleUntilItsIntervalElapses() {
-		MinimapProjection.RotationLimiter limiter = new MinimapProjection.RotationLimiter(2.0, 250_000_000L);
-
-		assertEquals(-180.0, limiter.update(0.0, true, 100L), EPSILON);
-		assertEquals(-180.0, limiter.update(90.0, true, 250_000_099L), EPSILON);
-		assertEquals(90.0, limiter.update(90.0, true, 250_000_100L), EPSILON);
-		assertEquals(0.0, limiter.update(90.0, false, 250_000_101L), EPSILON);
-		assertEquals(-90.0, limiter.update(-90.0, true, 250_000_102L), EPSILON);
+	void rotationPaddingCoversTheFullSquareDiagonal() {
+		assertEquals(24, MinimapProjection.rotationPadding(112, 112));
+		assertEquals(12, MinimapProjection.rotationPadding(200, 100));
 	}
 
 	private static MinimapProjection.Offset projectHeading(double yawDegrees) {
